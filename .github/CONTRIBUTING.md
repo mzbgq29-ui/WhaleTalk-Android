@@ -8,7 +8,7 @@
 
 ## 开发与构建
 
-先阅读 [README](../README.md) 和[构建指南](../docs/构建指南.md)，使用 JDK 17、Android SDK 35 和项目自带的 Gradle wrapper。源码编译可执行：
+先阅读 [README](../README.md) 和[构建指南](../docs/BUILD.md)，使用 JDK 21、Android SDK 35 和项目自带的 Gradle wrapper。源码编译可执行：
 
 ```powershell
 ./gradlew.bat :core:compileKotlin :app:compileBootstrapReleaseKotlin
@@ -20,9 +20,9 @@
 
 ## 仓库内容
 
-仓库保留应用源码、必要的构建工具、依赖锁、许可和使用说明。资源准备、更新发布、图标处理等独立维护工具保存在已忽略的 `.local/maintenance/`；测试源码、验收脚本、截图和报告保存在 `.local/testing/`。
+仓库保留应用源码、必要的构建工具、依赖锁、许可和使用说明。仓库保留相关测试源码和构建工具；设备日志、私人配置、截图和完整本地验收记录不提交。
 
-APK、运行镜像、原生预编译程序和缓存不进入 Git。账号、API Key、QQ 会话、配置备份、本机 `local.properties` 和 `.local/signing/` 签名材料也不提交。第三方依赖变化时，同步维护来源、版本锁和适用的许可材料。
+APK、运行镜像、第三方专有运行程序和缓存不进入 Git。项目兼容层的预编译库及其源码、摘要和构建说明随源码保留。账号、API Key、QQ 会话、配置备份、本机 `local.properties` 和 `.local/signing/` 签名材料也不提交。第三方依赖变化时，同步维护来源、版本锁和适用的许可材料。
 
 ## 许可
 
