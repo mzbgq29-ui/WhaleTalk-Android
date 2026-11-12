@@ -1,0 +1,10 @@
+{
+  "result": "not_completed",
+  "reason": "Execution environment restarted during extraction; user subsequently requested no further testing and immediate delivery.",
+  "lastObservedBaseEntries": 64000,
+  "selectedTests": 6,
+  "passedTests": 0,
+  "scope": "Production extractor on Android API 28, ordinary application UID u0_a67; full pinned archives served through a local read-only fixture. No real QQ account login.",
+  "extractorUsesSharedCopyBuffer": true,
+  "recordedAt": "2026-11-12T06:20:18.692293+00:00"
+}

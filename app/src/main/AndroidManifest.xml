@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+    <queries>
+        <package android:name="moe.shizuku.privileged.api" />
+    </queries>
+    <queries>
+        <package android:name="com.tencent.mobileqq" />
+    </queries>
+    <application android:name=".ManagerApplication" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:icon="@mipmap/ic_bigfish_launcher" android:roundIcon="@mipmap/ic_bigfish_launcher" android:label="${appLabel}" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:networkSecurityConfig="@xml/network_security_config" android:localeConfig="@xml/locales_config" android:supportsRtl="true">
+        <service android:name=".runtime.RuntimeService" android:exported="false" android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-enabled local servers, with optional restoration after reboot, persistent status and explicit stop actions" />
+        </service>
+        <receiver android:name=".runtime.RuntimeBootReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+        <service android:name=".runtime.BackgroundAccessibilityService" android:exported="true" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:label="@string/background_assist_title">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/background_accessibility" />
+        </service>
+        <service android:name=".device.DeviceBridgeService" android:exported="false" android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-enabled private Android device bridge for local terminal tools, with screen and input toggles and an explicit stop action" />
+        </service>
+        <service android:name=".device.DeviceAccessibility" android:exported="true" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:label="@string/device_accessibility_title">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/device_accessibility" />
+        </service>
+        <provider android:name="rikka.shizuku.ShizukuProvider" android:authorities="${applicationId}.shizuku" android:exported="true" android:multiprocess="false" android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+        <provider android:name=".ManagerApkProvider" android:authorities="${applicationId}.manager-apk" android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/manager_apk_paths" />
+        </provider>
+        <activity android:name=".BigFishStudioActivity" android:exported="true" android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity-alias android:name=".WebUiActivity" android:targetActivity=".BigFishStudioActivity" android:exported="false" />
+        <activity-alias android:name=".CpolarWebUiActivity" android:targetActivity=".BigFishStudioActivity" android:exported="false" />
+        <activity-alias android:name=".DesktopWebUiActivity" android:targetActivity=".BigFishStudioActivity" android:exported="false" />
+        <activity-alias android:name=".DesktopActivity" android:targetActivity=".BigFishStudioActivity" android:exported="false" />
+        <activity-alias android:name=".ThirdPartyNoticesActivity" android:targetActivity=".BigFishStudioActivity" android:exported="false" />
+        <activity-alias android:name=".ExtensionsActivity" android:targetActivity=".BigFishStudioActivity" android:exported="false" />
+        <activity-alias android:name=".TerminalActivity" android:targetActivity=".BigFishStudioActivity" android:exported="false" />
+        <activity-alias android:name=".ManagerUpdateActivity" android:targetActivity=".BigFishStudioActivity" android:exported="false" />
+        <activity-alias android:name=".StorageUsageActivity" android:targetActivity=".BigFishStudioActivity" android:exported="false" />
+        <activity-alias android:name=".DebugAccessActivity" android:targetActivity=".BigFishStudioActivity" android:exported="false" />
+        <activity-alias android:name=".DeviceAccessActivity" android:targetActivity=".BigFishStudioActivity" android:exported="false" />
+        <activity-alias android:name=".WebsiteBrowserActivity" android:targetActivity=".BigFishStudioActivity" android:exported="false" />
+        <activity-alias android:name=".HarnessActivity" android:targetActivity=".BigFishStudioActivity" android:exported="false" />
+        <activity-alias android:name=".SnowLumaActivity" android:targetActivity=".BigFishStudioActivity" android:exported="false" />
+        <activity-alias android:name=".MainActivity" android:targetActivity=".BigFishStudioActivity" android:exported="false" />
+        <activity-alias android:name=".BigFishFeaturesActivity" android:targetActivity=".BigFishStudioActivity" android:exported="false" />
+        <activity-alias android:name=".BigFishWizardActivity" android:targetActivity=".BigFishStudioActivity" android:exported="true" />
+        <activity-alias android:name="dev.bigfish.nativebot.MainActivity" android:targetActivity=".BigFishStudioActivity" android:exported="true" />
+    </application>
+</manifest>

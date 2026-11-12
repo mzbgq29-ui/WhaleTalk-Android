@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: MIT
+// Offline fixture against the shipped vendor functions; never sends a message.
+const fs = require('node:fs');
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+const child = require('node:child_process');
+const path = require('node:path');
+const input = process.argv[2] || path.resolve(__dirname, '../../.local/inputs/assets/snowluma/arm64-v8a/runtime.tar.bin');
+const source = input.endsWith('.bin') ? child.execFileSync('tar', ['-xOzf', input, 'index.mjs'], {maxBuffer: 32*1024*1024}).toString() : fs.readFileSync(input, 'utf8');
+const begin = source.indexOf('//#region ../onebot/src/modules/status-command.ts');
+assert(begin >= 0);
+const end = source.indexOf('//#endregion', begin);
+const startHandler = source.indexOf('\thandleStatusCommand(event) {');
+const endHandler = source.indexOf('\n\tasync replyStatus(', startHandler);
+assert(startHandler >= 0 && endHandler > startHandler);
+let now = 1000;
+const ctx = vm.createContext({Date: {now: () => now}, toInt: value => Number(value) || 0});
+vm.runInContext(source.slice(begin, end) + '\nfunction ' + source.slice(startHandler, endHandler).trim(), ctx);
+const {matchesStatusCommand: matches, handleStatusCommand: handle} = ctx;
+assert(matches('#sl', '#sl'));
+assert(matches([{type:'text',data:{text:' #SL '}}], '#sl'));
+assert(!matches([{type:'at',data:{qq:'123456'}},{type:'text',data:{text:'#sl'}}], '#sl'));
+assert(!matches([{type:'text',data:{text:'#sl'}},{type:'image',data:{}}], '#sl'));
+assert(!matches('hello', '#sl'));
+let calls = 0;
+const state = {ctx:{config:{statusCommand:{enabled:true,swallow:true,trigger:'#sl',cooldownSeconds:5}}},statusCommandCooldown:new Map(),trackAction:()=>{calls++;}};
+const event = {post_type:'message',message_type:'private',user_id:123456,message:'#sl'};
+assert(handle.call(state,event));assert.equal(calls,1);
+assert(handle.call(state,event));assert.equal(calls,1);
+now = 6000;assert(handle.call(state,event));assert.equal(calls,2);
+assert(!handle.call(state,{...event,message:'hello'}));
+state.ctx.config.statusCommand.enabled = false;
+assert(!handle.call(state,event));assert.equal(calls,2);
+console.log('Vendor status-command fixture: exact text, mixed-segment rejection, enabled/disabled, cooldown and consumed status request passed. No live messages sent.');

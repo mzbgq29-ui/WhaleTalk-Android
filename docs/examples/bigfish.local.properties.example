@@ -1,0 +1,7 @@
+# Copy to local.properties and replace every path with your absolute path.
+# First run: python3 tools/bigfish/prepare_upstream.py
+sdk.dir=/absolute/path/to/android-sdk
+runtimeAssetsDir=/absolute/path/to/project/.local/inputs/assets
+distributionAssetsDir=/absolute/path/to/project/.local/inputs/assets
+optionalAssetsDir=/absolute/path/to/project/.local/inputs/assets
+nativeLibsDir=/absolute/path/to/project/.local/inputs/native

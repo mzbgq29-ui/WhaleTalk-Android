@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"><title>QQ 登录</title>
+<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#edf2f8}#screen{position:absolute;inset:0;overflow:auto}#message{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:#34445b;font:15px system-ui;pointer-events:none;padding:20px;background:#edf2f8}#message[hidden]{display:none}#keyboard{position:absolute;opacity:0;width:1px;height:1px;bottom:0;left:0}</style></head>
+<body><div id="screen"></div><div id="message">正在准备 QQ 登录画面…</div><input id="keyboard" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="向 QQ 输入文字">
+<script>
+(function(){
+'use strict';
+var rfb=null, password=null, fit=true, modulePromise=null, connected=false, generation=0, timeout=null;
+var screen=document.getElementById('screen'), message=document.getElementById('message');
+window.bigfishState={phase:'loading',frames:0,width:0,height:0};
+function state(phase,text){window.bigfishState.phase=phase;message.textContent=text||'';message.hidden=phase==='frame';}
+function size(){if(rfb){rfb.scaleViewport=fit;rfb.clipViewport=!fit;rfb.dragViewport=!fit;window.dispatchEvent(new Event('resize'));}}
+function frame(session){
+ if(session!==generation||!connected||!rfb)return;
+ var canvas=screen.querySelector('canvas');if(!canvas||!canvas.width||!canvas.height)return;
+ var box=canvas.getBoundingClientRect();if(box.width<=0||box.height<=0){size();return;}
+ try{if(canvas.getContext('2d').getImageData(0,0,1,1).data[3]===0)return;}catch(e){return;}
+ window.bigfishState.frames++;window.bigfishState.width=canvas.width;window.bigfishState.height=canvas.height;
+ clearTimeout(timeout);state('frame','');
+}
+async function connect(){
+ if(!password||rfb)return;
+ var session=++generation;state('loading','正在加载本机画面组件…');
+ timeout=setTimeout(function(){if(session===generation&&window.bigfishState.phase!=='frame')state('timeout','还没有收到登录画面，请刷新画面或重新启动 QQ 服务。');},20000);
+ try{
+  if(!modulePromise)modulePromise=import('./core/rfb.js');
+  var module=await modulePromise;if(session!==generation)return;
+  state('connecting','正在连接本机 QQ 登录画面…');
+  rfb=new module.default(screen,'ws://127.0.0.1:6081/websockify',{credentials:{password:password}});
+  rfb.scaleViewport=fit;rfb.resizeSession=false;rfb.background='#edf2f8';
+  // The bundled noVNC 1.3.0 display flips only after decoding an RFB update.
+  // A completed HTML load or VNC handshake is not a displayed login frame.
+  if(rfb._display&&typeof rfb._display.flip==='function'){
+   var display=rfb._display, flip=display.flip.bind(display);
+   display.flip=function(){var value=flip.apply(null,arguments);requestAnimationFrame(function(){frame(session);});return value;};
+  }
+  rfb.addEventListener('connect',function(){connected=true;state('connected','已连上本机桌面，正在等待画面…');size();});
+  rfb.addEventListener('disconnect',function(){if(session!==generation)return;connected=false;rfb=null;clearTimeout(timeout);state('disconnected','画面连接已断开，请刷新或重新启动 QQ 服务。');});
+  rfb.addEventListener('securityfailure',function(){clearTimeout(timeout);state('auth-error','本机画面认证失败，请重新启动 QQ 服务。');});
+  rfb.addEventListener('credentialsrequired',function(){if(rfb)rfb.sendCredentials({password:password});});
+ }catch(e){clearTimeout(timeout);modulePromise=null;rfb=null;state('module-error','登录画面组件未能加载，请刷新；仍失败时重新启动 QQ 服务。');}
+}
+window.bigfishConnect=function(value){password=value;connect();};
+window.bigfishFit=function(value){fit=value;size();};
+window.bigfishDispose=function(){generation++;clearTimeout(timeout);if(rfb)rfb.disconnect();rfb=null;password=null;};
+if(window.ResizeObserver)new ResizeObserver(size).observe(screen);
+window.addEventListener('pagehide',window.bigfishDispose);
+var keyboard=document.getElementById('keyboard');
+window.bigfishKeyboard=function(){keyboard.focus();};
+keyboard.addEventListener('input',function(e){
+ if(e.isComposing||!rfb)return;
+ Array.from(keyboard.value).forEach(function(c){var code=c.codePointAt(0);rfb.sendKey(code<=255?code:(0x01000000|code));});keyboard.value='';
+});
+keyboard.addEventListener('compositionend',function(){keyboard.dispatchEvent(new Event('input'));});
+keyboard.addEventListener('keydown',function(e){if(!rfb)return;if(e.key==='Enter'){rfb.sendKey(0xff0d);e.preventDefault();}else if(e.key==='Backspace'&&!keyboard.value){rfb.sendKey(0xff08);e.preventDefault();}});
+})();
+</script></body></html>

@@ -1,0 +1,89 @@
+{
+  "tests": 63,
+  "suites": [
+    {
+      "name": "io.astrbot.android.core.LoopbackRfbClientTest",
+      "tests": "2",
+      "failures": "0",
+      "errors": "0"
+    },
+    {
+      "name": "io.astrbot.android.core.BigFishOptionsTest",
+      "tests": "4",
+      "failures": "0",
+      "errors": "0"
+    },
+    {
+      "name": "io.astrbot.android.core.BigFishInputTest",
+      "tests": "4",
+      "failures": "0",
+      "errors": "0"
+    },
+    {
+      "name": "io.astrbot.android.core.AuditRegressionTest",
+      "tests": "5",
+      "failures": "0",
+      "errors": "0"
+    },
+    {
+      "name": "io.astrbot.android.runtime.BigFishModelVerifierTest",
+      "tests": "10",
+      "failures": "0",
+      "errors": "0"
+    },
+    {
+      "name": "io.astrbot.android.runtime.SnowLumaHealthTest",
+      "tests": "4",
+      "failures": "0",
+      "errors": "0"
+    },
+    {
+      "name": "io.astrbot.android.runtime.RuntimeReadinessTest",
+      "tests": "2",
+      "failures": "0",
+      "errors": "0"
+    },
+    {
+      "name": "io.astrbot.android.PersonaTemplatesTest",
+      "tests": "4",
+      "failures": "0",
+      "errors": "0"
+    },
+    {
+      "name": "io.astrbot.android.runtime.LegacySnowPathsTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0"
+    },
+    {
+      "name": "io.astrbot.android.runtime.BigFishConfigTest",
+      "tests": "8",
+      "failures": "0",
+      "errors": "0"
+    },
+    {
+      "name": "io.astrbot.android.runtime.CompanionConfigurationTest",
+      "tests": "4",
+      "failures": "0",
+      "errors": "0"
+    },
+    {
+      "name": "io.astrbot.android.runtime.SnowStatusCommandTest",
+      "tests": "4",
+      "failures": "0",
+      "errors": "0"
+    },
+    {
+      "name": "io.astrbot.android.TavernCharacterCardTest",
+      "tests": "10",
+      "failures": "0",
+      "errors": "0"
+    },
+    {
+      "name": "io.astrbot.android.runtime.BackupIdentityTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0"
+    }
+  ]
+}

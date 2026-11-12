@@ -1,0 +1,53 @@
+{
+  "entries": 11,
+  "upstreamCards": [
+    {
+      "id": "tavern-deepsea",
+      "repository": "XCNXNXNX/dsh-portable-tavern",
+      "revision": "b1b319b60680f8d16acd3499775b57ded8096304",
+      "file": "docs/preview/demo/deepseek-card.json",
+      "sha256": "00eba3a84239de16662aa97151aa17bdc367b0298cd3e12d770c514109ad5603",
+      "license": "MIT",
+      "adaptation": "Metadata labels and a Chinese-response default in the importer; original card fields retained."
+    },
+    {
+      "id": "tavern-dragon",
+      "repository": "XCNXNXNX/dsh-portable-tavern",
+      "revision": "b1b319b60680f8d16acd3499775b57ded8096304",
+      "file": "docs/preview/demo/card.json",
+      "sha256": "6338be7d6b39f04703c09191f1be22adffb12953ef5d919b6ec28cd0e7a10e0f",
+      "license": "MIT",
+      "adaptation": "Metadata labels and a Chinese-response default in the importer; original card fields retained."
+    },
+    {
+      "id": "tavern-devon",
+      "repository": "AndreiNicu/World-Forge",
+      "revision": "87ea72f96b50386f80234095c5bd04c003b04b8c",
+      "file": "Samples/Apartment_Test/Export/Devon_Card.json",
+      "sha256": "263930916b683c9f455ed97f4df769034ef63367327ab638cb0ee1f18a84f28b",
+      "license": "MIT",
+      "adaptation": "Metadata labels and a Chinese-response default in the importer; original card fields retained."
+    },
+    {
+      "id": "tavern-marcus",
+      "repository": "AndreiNicu/World-Forge",
+      "revision": "87ea72f96b50386f80234095c5bd04c003b04b8c",
+      "file": "Samples/Apartment_Test/Export/Marcus_Card.json",
+      "sha256": "0a03fdd7fd5bacd3f95f6a73d91b12f05c5545087bde95550efa93eca0e2e7d4",
+      "license": "MIT",
+      "adaptation": "Metadata labels and a Chinese-response default in the importer; original card fields retained."
+    },
+    {
+      "id": "tavern-seraphina",
+      "repository": "SillyTavern/SillyTavern",
+      "revision": "06bde939fb1e9c4c8d8641d810f0a916b5bce127",
+      "file": "default/content/default_Seraphina.json",
+      "sha256": "bdebaafa4c1ed7782a6cc68926c5ab6363ba40f36c79635e47b936d985bf4a2d",
+      "license": "AGPL-3.0",
+      "adaptation": "Metadata labels and a Chinese-response default in the importer; original card fields retained."
+    }
+  ],
+  "originalCards": 6,
+  "originalLicense": "MIT",
+  "note": "Only character text is bundled. No third-party portraits or imported card scripts are executed."
+}

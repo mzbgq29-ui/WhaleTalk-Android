@@ -1,0 +1,105 @@
+{
+  "version": "1.3.8-qqfix",
+  "createdAt": "2026-11-12T23:06:25.653259+08:00",
+  "issue": "QQ login window works after QR scan but OneBot channel remains disconnected",
+  "reproducedCause": "Overlong Android host socket paths are relocated by PRoot. Direct connect can succeed while directory enumeration omits the socket. SnowLuma discovers pipes using directory enumeration, so it never detects the channel.",
+  "fix": "Use the short private /manager/sl-ipc directory in QQ and SnowLuma; startup preflight requires socket bind AND directory enumeration to succeed.",
+  "regression": {
+    "kernelAndroidLengthPaths": [
+      "/data/user/0",
+      "/data/user/999",
+      "/data/data"
+    ],
+    "kernelSocketNames": "5/6/10-digit PID socket names; private permissions and probe cleanup passed",
+    "realProotVersions": [
+      "Debian PRoot 5.1.0",
+      "Debian PRoot 5.4.0"
+    ],
+    "realProotScenarios": [
+      "Old path binds and direct-connects, but is absent from readdir: reproduced for both Android host prefix lengths",
+      "New short control/recv sockets are enumerated and exchanged data: passed",
+      "Deliberately overlong preflight socket rejected as non-enumerable: passed"
+    ],
+    "prootTestEnvironment": "PROOT_NO_SECCOMP=1 for this Linux test host; APK PRoot configuration unchanged",
+    "nativeArm64Probe": "Original native hook tested under QEMU on representative host paths: overlong native address could not start; short address started and both sockets returned HELLO. This direct-host test is separate from the PRoot directory-remapping scenario.",
+    "launcherEnvironment": "QQ and SnowLuma use the same short directory; account HOME unchanged; passed"
+  },
+  "build": "assembleBundledRelease passed",
+  "unitTests": {
+    "core": {
+      "tests": 18,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "application": {
+      "tests": 48,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "taskResult": "passed / up-to-date where Gradle verified unchanged test inputs"
+  },
+  "lint": {
+    "errors": 0,
+    "warnings": 330,
+    "categories": {
+      "ApplySharedPref": 1,
+      "UnusedAttribute": 1,
+      "BatteryLife": 2,
+      "GradleDependency": 10,
+      "ModifierParameter": 2,
+      "Typos": 1,
+      "PluralsCandidate": 7,
+      "InsecureBaseConfiguration": 1,
+      "DataExtractionRules": 1,
+      "ObsoleteSdkInt": 1,
+      "StaticFieldLeak": 1,
+      "UnusedResources": 187,
+      "UsableSpace": 30,
+      "TypographyDashes": 4,
+      "IconLauncherShape": 5,
+      "MonochromeLauncherIcon": 1,
+      "UseKtx": 74,
+      "SetTextI18n": 1
+    }
+  },
+  "apk": {
+    "apk": "BigFish-Android-1.3.8-qqfix-arm64-v8a.apk",
+    "bytes": 1038777556,
+    "sha256": "839c4255da9bc93ce5e26a39aa67eaf9eef1d3e65dbbffe5dac60604df145312",
+    "certificateSHA256": "d0d188a0d57854f9e360e39c84f7be8e4107d3455cc42b9ed91ba4b9b83bafef",
+    "schemes": [
+      "v1",
+      "v2",
+      "v3"
+    ],
+    "applicationId": "dev.bigfish.nativebot.qqfix",
+    "versionName": "1.3.8-qqfix",
+    "versionCode": 100308,
+    "minSdk": 26,
+    "targetSdk": 35,
+    "abi": "arm64-v8a",
+    "debuggable": false,
+    "bundledRuntimeSHA256": "a4897c7d5f3900696096a42673223b9af0175e17c2a6f6da313a31a4277f1533",
+    "bundledQqVersion": "3.2.35-54395",
+    "bundledQqSHA256": "5f93ea62347dd772c7be4115413c95d2a60d189f3dd81bc194834bd4d7343cf2",
+    "upgrade": "Same application ID and verified signing certificate as 1.3.7-qqfix; increased versionCode. Direct update preserves app data."
+  },
+  "upgrade": {
+    "sameApplicationId": true,
+    "sameVerifiedSigningCertificateAs137": true,
+    "increasedVersionCode": true,
+    "preservesExistingAppData": true
+  },
+  "assetVerification": {
+    "shortPathAndDirectoryVisibilityCheckPresentInSignedApk": true,
+    "runtimeQqSnowLumaDesktopMatchPinnedOriginalInputs": true,
+    "v1v2v3SignaturesPassed": true,
+    "jni64Bit16KiBAlignmentPassed": true
+  },
+  "realDeviceConnectionVerified": false,
+  "realQqAccountLoginVerified": false,
+  "realMessageExchangeVerified": false,
+  "note": "Reproduced discovery failure is fixed; final connection on the user phone is not remotely verified."
+}
