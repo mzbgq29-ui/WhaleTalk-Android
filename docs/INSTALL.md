@@ -3,7 +3,7 @@
 ## 1. 安装
 
 1. 确认手机是 ARM64、Android 8 或更新版本，并预留至少 6 GB 空间。
-2. 下载项目提供的 APK ZIP，解压后点击 APK。首次从文件管理器安装时，按 Android 提示允许该来源安装应用。
+2. 在 [Releases 下载页](https://github.com/mzbgq29-ui/WhaleTalk-Android/releases/tag/v1.3.8-qqfix) 下载 APK ZIP，解压后点击 APK。首次从文件管理器安装时，按 Android 提示允许该来源安装应用。
 3. 从 **1.3.7-qqfix 升级到相同签名的 1.3.8-qqfix**：先停止旧服务，再覆盖安装，保留数据。原始 `dev.bigfish.nativebot` 和 `.qqfix` 修复版包名不同，会分别安装；两个版本不要同时运行服务。
 4. 更名后的仓库源码目前没有发布新的 APK。自行签名的包若与现有 APK 签名不同，不能覆盖安装；请先在现有应用中导出并安全保存备份。
 

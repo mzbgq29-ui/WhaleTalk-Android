@@ -11,7 +11,7 @@
 - [源码构建与签名](docs/BUILD.md)：开发环境、运行资源、构建命令和签名兼容。
 - [1.3.8 修复说明](docs/QQFix-1.3.8.md) · [历史验证范围](VALIDATION.md) · [项目来源与许可](FORK.md)
 
-现有 1.3.8 安装包和对应源码可从 [提供的文件集合](https://storage.to/c/tYPTEeHyI) 获取；网盘文件可能到期。解压 APK ZIP 后安装其中的 APK；只有相同包名与签名的版本才能直接覆盖安装。请先阅读安装教程中的迁移说明。
+**[下载 1.3.8 安装包和原始源码 ZIP](https://github.com/mzbgq29-ui/WhaleTalk-Android/releases/tag/v1.3.8-qqfix)**。也可从 [网盘文件集合](https://storage.to/c/tYPTEeHyI) 下载（网盘链接可能到期）。解压 APK ZIP 后安装其中的 APK；只有相同包名与签名的版本才能直接覆盖安装。请先阅读安装教程中的迁移说明。
 
 ## 功能
 
