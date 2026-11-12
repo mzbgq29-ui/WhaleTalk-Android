@@ -87,13 +87,13 @@ import kotlin.math.roundToInt
             if (android.os.Build.VERSION.SDK_INT >= 29) {
                 saving = true
                 scope.launch {
-                    try { withContext(Dispatchers.IO) { StudioQqSnapshot.gallery(context, image) }; savedMessage = "已保存到相册 Pictures/BigFish，可在手机 QQ 扫一扫中选择这张图片" }
+                    try { withContext(Dispatchers.IO) { StudioQqSnapshot.gallery(context, image) }; savedMessage = "已保存到相册 Pictures/WhaleTalk，可在手机 QQ 扫一扫中选择这张图片" }
                     catch (_: Exception) { savedMessage = "相册保存失败，请重试或使用系统截图" }
                     finally { saving = false }
                 }
             } else {
                 pendingSnapshot = image
-                saveDocument.launch("BigFish-QQ-login.png")
+                saveDocument.launch("WhaleTalk-QQ-login.png")
             }
         }, enabled = state.bitmap != null && !saving && pendingSnapshot == null) { Text(if (saving) "正在保存…" else "保存登录画面") }
         savedMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }

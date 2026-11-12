@@ -9,7 +9,7 @@ enum class BigFishResourceMode(val title: String, val turns: Int, val replyToken
 
 data class BigFishOptions(
     val mode: BigFishResourceMode = BigFishResourceMode.BALANCED,
-    val wakeWord: String = "大肥鱼",
+    val wakeWord: String = "鲸语",
     val friendNeedsWake: Boolean = false,
     val groupMentionOnly: Boolean = false,
     val replyWithQuote: Boolean = false,

@@ -131,7 +131,7 @@ import java.util.zip.ZipInputStream
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             LiquidOutlinedButton(onClick = { paused = !paused }, Modifier.weight(1f)) { Text(if (paused) "继续刷新" else "暂停刷新") }
-            LiquidOutlinedButton(onClick = { export.launch("BigFish-${category.name.lowercase()}.log") }, Modifier.weight(1f)) { Text("导出日志") }
+            LiquidOutlinedButton(onClick = { export.launch("WhaleTalk-${category.name.lowercase()}.log") }, Modifier.weight(1f)) { Text("导出日志") }
         }
         StudioField(query, { query = it.take(120) }, "搜索日志", hint = "输入关键词，仅筛选最近 200 行")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -146,7 +146,7 @@ import java.util.zip.ZipInputStream
         SelectionContainer { Text(visible.ifBlank { if (text.isBlank()) "还没有日志" else "没有匹配的日志，可清除筛选查看上下文" }, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
         if (issuesOnly) Text("筛选仅显示匹配行。查看完整报错上下文请关闭筛选；导出日志仍保留完整内容。", style = MaterialTheme.typography.bodySmall)
     }
-    LiquidOutlinedButton(onClick = { diagnostics.launch("BigFish-diagnostics.zip") }, Modifier.fillMaxWidth()) { Text("导出诊断包") }
+    LiquidOutlinedButton(onClick = { diagnostics.launch("WhaleTalk-diagnostics.zip") }, Modifier.fillMaxWidth()) { Text("导出诊断包") }
 }
 
 @Composable private fun StudioBackups(vm: StudioModel, state: ManagerState) {
@@ -163,7 +163,7 @@ import java.util.zip.ZipInputStream
     }
     StudioCard("留一份安心", "备份可能包含 QQ 会话和 API 密钥，请保存在自己信任的位置。") {
         LiquidButton(onClick = { RuntimeService.command(context, "backup") }, Modifier.fillMaxWidth(), enabled = !state.busy && state.componentsReady) { Text("创建本机快照") }
-        LiquidOutlinedButton(onClick = { export.launch("BigFish-backup.zip") }, Modifier.fillMaxWidth(), enabled = !state.busy && state.componentsReady) { Text("导出备份 ZIP") }
+        LiquidOutlinedButton(onClick = { export.launch("WhaleTalk-backup.zip") }, Modifier.fillMaxWidth(), enabled = !state.busy && state.componentsReady) { Text("导出备份 ZIP") }
         LiquidOutlinedButton(onClick = { import.launch(arrayOf("application/zip", "application/octet-stream")) }, Modifier.fillMaxWidth(), enabled = !state.busy) { Text("选择备份文件") }
     }
     if (state.portableImport != null) StudioCard("备份已准备好", "恢复会替换当前机器人数据，运行层会先保存恢复前快照。") {
@@ -288,7 +288,7 @@ import java.util.zip.ZipInputStream
     } }.onSuccess { names = it }.onFailure { vm.error = "此构建未包含完整许可材料，请使用完整发布包" } }
     StudioCard("开源贡献者", "mzbgq 维护本应用界面；底层组件与社区作品保留各自作者和许可。") {
         StudioField(query, { query = it }, "搜索项目与许可")
-        LiquidOutlinedButton(onClick = { export.launch("BigFish-open-source-notices.zip") }, Modifier.fillMaxWidth()) { Text("导出全部许可") }
+        LiquidOutlinedButton(onClick = { export.launch("WhaleTalk-open-source-notices.zip") }, Modifier.fillMaxWidth()) { Text("导出全部许可") }
     }
     val filtered = names.filter { query.isBlank() || it.contains(query, true) }
     filtered.take(80).forEach { name -> StudioCard {

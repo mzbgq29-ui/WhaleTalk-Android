@@ -86,7 +86,7 @@ open class BigFishStudioActivity : ComponentActivity() {
                 Row(Modifier.fillMaxWidth().heightIn(min = 58.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (!root) TextButton(onClick = { if (!vm.back()) vm.go(StudioPage.HOME, true) }, Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) { Text("‹", fontSize = 32.sp) }
                     Column(Modifier.weight(1f)) {
-                        Text(if (root) "BIGFISH  /  mzbgq" else vm.page.section, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        Text(if (root) "WHALETALK  /  mzbgq" else vm.page.section, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         Text(vm.page.title, fontSize = if (root) 30.sp else 25.sp, fontWeight = FontWeight.Bold)
                     }
                     if (root) StudioMascot(Modifier.size(48.dp).clickable { vm.go(StudioPage.ABOUT) })
@@ -180,7 +180,7 @@ open class BigFishStudioActivity : ComponentActivity() {
     StudioCard("常用") {
         StudioTile("和她聊聊", "在手机上直接开始一段对话", { vm.go(StudioPage.CHAT, true) })
         StudioTile("回应方式", "谁能聊天、群聊怎么唤醒", { vm.go(StudioPage.ACCESS) })
-        StudioTile("人设与性格", "大肥鱼，或你亲手写下的性格", { vm.go(StudioPage.PERSONAS) })
+        StudioTile("人设与性格", "鲸语，或你亲手写下的性格", { vm.go(StudioPage.PERSONAS) })
     }
     Text("本机运行 · 云端思考 · mzbgq", Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }

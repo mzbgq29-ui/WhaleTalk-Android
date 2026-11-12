@@ -954,12 +954,12 @@ class RuntimeController(private val context: Context, private val scope: Corouti
             resumeAfterMaintenance(listOf(ServiceId.ASTRBOT), validateStartup = true)
             if (firstSetup) {
                 val preset = PersonaLibrary.read(context).firstOrNull { it.id == "blue-whale" }
-                    ?: error("内置大肥鱼人设缺失，请重新安装完整包")
+                    ?: error("内置鲸语人设缺失，请重新安装完整包")
                 changePersona("persona-apply", preset.id)
             }
             if (ServiceId.SNOWLUMA in wanted) resumeAfterMaintenance(listOf(ServiceId.SNOWLUMA), validateStartup = true)
             withContext(Dispatchers.IO) { bigFishSetup.commit() }
-            updateState { it.copy(notice = "模型、大肥鱼人设和消息通道已配置，下一步登录 QQ") }
+            updateState { it.copy(notice = "模型、鲸语人设和消息通道已配置，下一步登录 QQ") }
         } catch (failure: Throwable) {
             withContext(NonCancellable) {
                 supervisors.values.toList().reversed().forEach { it.stop() }

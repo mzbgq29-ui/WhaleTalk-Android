@@ -68,7 +68,7 @@ class BigFishForm : ViewModel() {
     var error by mutableStateOf<String?>(null)
     var task by mutableStateOf("")
     var options by mutableStateOf(BigFishOptions())
-    var wakeWord by mutableStateOf("大肥鱼")
+    var wakeWord by mutableStateOf("鲸语")
     override fun onCleared() { key = "" }
 }
 
@@ -189,10 +189,10 @@ class BigFishWizardActivity : ComponentActivity() {
             topBar = {
                 LiquidPanel(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 14.dp, vertical = 8.dp)) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Image(painterResource(R.drawable.whale_girl), "大肥鱼", Modifier.size(42.dp).clip(RoundedCornerShape(15.dp)))
+                    Image(painterResource(R.drawable.whale_girl), "鲸语", Modifier.size(42.dp).clip(RoundedCornerShape(15.dp)))
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("大肥鱼", fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                        Text("鲸语", fontSize = 21.sp, fontWeight = FontWeight.Bold)
                         if (!compact) Text(if (completed) "你的 QQ 伙伴" else "跟着引导，给鲸鱼安个家", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     LiquidOutlinedButton(onClick = ::features) { Text("功能中心") }
@@ -261,15 +261,15 @@ class BigFishWizardActivity : ComponentActivity() {
                     }
                 }
                 if (completed) {
-                    Hero(if (online) "大肥鱼，\n在线啦。" else "鲸鱼\n就在这里。", if (online) "现在可以用主人 QQ 给小号发消息了。" else "连接状态会在检查后更新。", dark)
+                    Hero(if (online) "鲸语，\n在线啦。" else "鲸鱼\n就在这里。", if (online) "现在可以用主人 QQ 给小号发消息了。" else "连接状态会在检查后更新。", dark)
                     Section("运行状态", "只有 QQ 在线且消息通道连接，才显示已连接") {
                         CheckRow("QQ 登录", when (qqService.qq) { QqState.ONLINE -> "已登录"; QqState.VERIFICATION_REQUIRED -> "需要安全验证"; QqState.OFFLINE -> "已掉线"; else -> "等待确认" }, qqService.qq == QqState.ONLINE)
                         CheckRow("消息通道", if (qqService.oneBot == OneBotState.CONNECTED) "已连接" else "尚未连接", qqService.oneBot == OneBotState.CONNECTED)
                         CheckRow("机器人服务", if (astrbot.ready) "运行中" else "未就绪", astrbot.ready)
                         CheckRow("上次验证模型", record?.optString("model").orEmpty().ifBlank { "尚未配置" }, record != null)
                     }
-                    Section("接下来，和她聊聊", "内置大肥鱼人设，对话记录由 AstrBot 保存在这台手机") {
-                        Text("用主人 QQ 私聊机器人小号，发一句「在吗」。群聊需先在配置里添加群号，再 @机器人或喊「大肥鱼」。")
+                    Section("接下来，和她聊聊", "内置鲸语人设，对话记录由 AstrBot 保存在这台手机") {
+                        Text("用主人 QQ 私聊机器人小号，发一句「在吗」。群聊需先在配置里添加群号，再 @机器人或喊「鲸语」。")
                         LiquidOutlinedButton(onClick = { backend(ServiceId.SNOWLUMA) }, enabled = qqService.canOpenWebUi, modifier = Modifier.fillMaxWidth()) { Text("QQ 登录与连接") }
                         LiquidOutlinedButton(onClick = { backend(ServiceId.ASTRBOT) }, enabled = astrbot.canOpenWebUi, modifier = Modifier.fillMaxWidth()) { Text("对话、插件与更多模型") }
                         LiquidButton(onClick = ::features, modifier = Modifier.fillMaxWidth()) { Text("打开功能中心") }
@@ -281,7 +281,7 @@ class BigFishWizardActivity : ComponentActivity() {
                     }
                 } else when (step) {
                     0 -> {
-                        Hero("把大肥鱼\n养进 QQ。", "一个安装包。环境自动准备，剩下跟着引导。", dark)
+                        Hero("把鲸语\n养进 QQ。", "一个安装包。环境自动准备，剩下跟着引导。", dark)
                         Section("准备好这些，就能开始", "不需要电脑，也不用手动输入命令") {
                             CheckRow("手机架构", if (compatible) "ARM64 · 支持" else "当前架构暂不支持 Linux QQ", compatible)
                             CheckRow("可用空间", String.format(java.util.Locale.ROOT, "%.1f GB", availableGiB), availableGiB >= 3.0)
@@ -330,7 +330,7 @@ class BigFishWizardActivity : ComponentActivity() {
                                 OutlinedTextField(form.endpoint, { if (form.endpoint != it) form.key = ""; form.endpoint = it }, Modifier.fillMaxWidth(), label = { Text("API 基础地址（HTTPS）") }, singleLine = true, enabled = !working)
                                 OutlinedTextField(form.model, { form.model = it.take(160) }, Modifier.fillMaxWidth(), label = { Text("模型名称") }, singleLine = true, enabled = !working)
                                 OutlinedTextField(form.friends, { form.friends = it.take(4096) }, Modifier.fillMaxWidth(), label = { Text("允许私聊的 QQ 号（可选）") }, supportingText = { Text("逗号分隔；主人始终加入") }, enabled = !working)
-                                OutlinedTextField(form.groups, { form.groups = it.take(4096) }, Modifier.fillMaxWidth(), label = { Text("允许回复的群号（可选）") }, supportingText = { Text("逗号分隔；群内 @或喊大肥鱼唤醒") }, enabled = !working)
+                                OutlinedTextField(form.groups, { form.groups = it.take(4096) }, Modifier.fillMaxWidth(), label = { Text("允许回复的群号（可选）") }, supportingText = { Text("逗号分隔；群内 @或喊鲸语唤醒") }, enabled = !working)
                             }
                         }
                         Section("对话与触发方式", "可直接应用的个性化设置") {

@@ -128,7 +128,7 @@ class BigFishSnowLuma(private val context: Context) {
             ?: error("请先完成机器人设置，创建本机 QQ 消息通道")
         val port = platform.optInt("ws_reverse_port", 6199)
         check(port in 1024..65535)
-        val client = JSONObject().put("name", "BigFish-AstrBot").put("enabled", platform.optBoolean("enable", true))
+        val client = JSONObject().put("name", "WhaleTalk-AstrBot").put("enabled", platform.optBoolean("enable", true))
             .put("url", "ws://127.0.0.1:$port/ws").put("role", "Universal")
             .put("accessToken", platform.optString("ws_reverse_token")).put("messageFormat", "array")
             .put("reportSelfMessage", false).put("reconnectIntervalMs", 5000)
@@ -143,7 +143,7 @@ class BigFishSnowLuma(private val context: Context) {
                 .put("httpServers", JSONArray()).put("httpClients", JSONArray()).put("wsServers", JSONArray())
             val clients = networks.optJSONArray("wsClients") ?: JSONArray()
             val retained = JSONArray()
-            for (i in 0 until clients.length()) { val value = clients.getJSONObject(i); if (value.optString("name") != "BigFish-AstrBot") retained.put(value) }
+            for (i in 0 until clients.length()) { val value = clients.getJSONObject(i); if (value.optString("name") !in setOf("BigFish-AstrBot", "WhaleTalk-AstrBot")) retained.put(value) }
             retained.put(JSONObject(client.toString()))
             networks.put("wsClients", retained); document.put("networks", networks)
             // Repair the former app default in both base and account-specific files.

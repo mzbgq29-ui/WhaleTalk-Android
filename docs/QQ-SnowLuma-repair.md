@@ -2,7 +2,7 @@
 
 本文记录最初的源码修补阶段。后续 1.3.7-qqfix 并存 APK 及便捷功能的说明见 [QQFix-1.3.7.md](QQFix-1.3.7.md)；其最终构建状态以同批交付的验证记录为准。
 
-此交付为基于用户提供的 BigFish Android 1.3.6 的源码修补包，包含重编译的 ARM64 兼容库。未生成新的签名 APK，不能把这个 ZIP 当成安卓安装包。
+本页记录早期源码修复和 ARM64 兼容库的检查情况；当前安装包请从 Releases 下载。
 
 ## 核对版本
 
@@ -52,6 +52,6 @@ python3 tools/bigfish/prepare_release_inputs.py \
   --sha256 eb1e2fa6a6415793f655c7afc0525156b16d7cf9d5906ca1701c43f9fa044cdd
 ```
 
-脚本会略过当前源码已有的资产，因此本次修复库和启动器不会被旧 APK 覆盖。再按 `FORK.md` 配置 JDK 21、Android SDK 35 与 `local.properties`。正式覆盖安装需要原应用的签名私钥；源码及原 APK 中都没有该私钥。自行签名的 APK 无法直接覆盖不同签名的旧安装。
+脚本会略过当前源码已有的资产，因此本次修复库和启动器不会被旧 APK 覆盖。再按 `THIRD_PARTY.md` 配置 JDK 21、Android SDK 35 与 `local.properties`。正式覆盖安装需要原应用的签名私钥；源码及原 APK 中都没有该私钥。自行签名的 APK 无法直接覆盖不同签名的旧安装。
 
 ARM64 兼容库的构建命令和准确摘要已记录于 `app/src/main/assets/runtime/desktop/compat-binary.json`。不要单独修改 C 文件而沿用旧摘要或旧二进制。

@@ -67,7 +67,7 @@ internal enum class ManagerPage(private val labelResource: Int, val icon: Int) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (onBack != null) IconButton(onClick = onBack) { Icon(painterResource(R.drawable.ic_back), AppText.get(R.string.ui_go_back), Modifier.size(20.dp)) }
             if (page == ManagerPage.HOME && title == null) ManagerAppLogo(Modifier.size(30.dp))
-            Text(title ?: if (page == ManagerPage.HOME) "大肥鱼" else page.label, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            Text(title ?: if (page == ManagerPage.HOME) "鲸语" else page.label, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 style = if (title == null) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleLarge)
             if (page == ManagerPage.HOME && title == null) Text(AppText.get(R.string.ui_manager), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

@@ -27,7 +27,7 @@ for name in sorted(set(filter(None, names))):
         for marker in [b"-----BEGIN " + b"PRIVATE KEY-----", b"-----BEGIN " + b"RSA PRIVATE KEY-----"]:
             assert marker not in content, name
         files.append((name, content))
-archive = dist / f"BigFish-Android-{version}-source.zip"
+archive = dist / f"WhaleTalk-Android-{version}-source.zip"
 with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as output:
     for name, content in files:
         entry = zipfile.ZipInfo("BigFish-Android/" + name, (2026, 11, 10, 0, 0, 0))
@@ -37,14 +37,14 @@ with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as out
 with zipfile.ZipFile(archive) as output:
     assert output.testzip() is None
     assert len(output.namelist()) == len(files)
-for source, target in [("BIGFISH.md", "安装说明.md"), ("FORK.md", "参考与复用.md"), ("VALIDATION.md", "验证记录.md")]:
+for source, target in [("WHALETALK.md", "安装说明.md"), ("THIRD_PARTY.md", "参考与复用.md"), ("VALIDATION.md", "验证记录.md")]:
     shutil.copyfile(root / source, dist / target)
 def digest(path):
     value = hashlib.sha256()
     with path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""): value.update(block)
     return value.hexdigest()
-apk = dist / f"BigFish-Android-{version}-arm64-v8a.apk"
+apk = dist / f"WhaleTalk-Android-{version}-arm64-v8a.apk"
 report = json.loads((root / "validation/apk-verification.json").read_text())
 assert digest(apk) == report["sha256"], "Release changed since verification"
 checksums = [(digest(path), path.name) for path in [apk, archive, dist / "安装说明.md", dist / "参考与复用.md", dist / "验证记录.md"]]

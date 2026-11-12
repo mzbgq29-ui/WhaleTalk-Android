@@ -48,7 +48,9 @@ android {
     namespace = "io.astrbot.android"
     compileSdk = 35
     defaultConfig {
-        applicationId = "dev.bigfish.nativebot" + providers.gradleProperty("verificationSuffix").getOrElse("")
+        val suffix = providers.gradleProperty("verificationSuffix").getOrElse("")
+        applicationId = if (suffix in setOf(".uicheck", ".filecheck", ".offlinecheck")) "dev.bigfish.nativebot" + suffix
+            else providers.gradleProperty("applicationIdOverride").getOrElse("dev.bigfish.nativebot" + suffix)
         minSdk = 26
         targetSdk = 35
         versionCode = appVersionCode

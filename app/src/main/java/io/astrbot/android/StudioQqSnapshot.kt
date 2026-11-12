@@ -17,9 +17,9 @@ internal object StudioQqSnapshot {
     fun gallery(context: Context, bitmap: Bitmap): Uri {
         check(Build.VERSION.SDK_INT >= 29)
         val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "BigFish-QQ-${System.currentTimeMillis()}.png")
+            put(MediaStore.Images.Media.DISPLAY_NAME, "WhaleTalk-QQ-${System.currentTimeMillis()}.png")
             put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/BigFish")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/WhaleTalk")
             put(MediaStore.Images.Media.IS_PENDING, 1)
         }
         val uri = requireNotNull(context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)) { "无法创建相册图片" }

@@ -19,7 +19,7 @@ args = parser.parse_args()
 properties = dict(line.split("=", 1) for line in (root / "gradle.properties").read_text().splitlines() if "=" in line and not line.startswith("#"))
 version = properties["appVersionName"]
 version_code = int(properties["appVersionCode"])
-application_id = "dev.bigfish.nativebot" + properties.get("verificationSuffix", "")
+application_id = properties.get("applicationIdOverride", "dev.bigfish.nativebot" + properties.get("verificationSuffix", ""))
 apk = root / "app/build/outputs/apk/bundled/release/app-bundled-release.apk"
 tools = args.sdk / "build-tools/35.0.0"
 def run(*command): return subprocess.run(list(map(str, command)), check=True, capture_output=True, text=True).stdout
@@ -49,7 +49,7 @@ with zipfile.ZipFile(apk) as archive:
     assert "lib/arm64-v8a/libproot.so" in names and "lib/arm64-v8a/libproot-loader.so" in names
     metadata = json.loads(archive.read("assets/bootstrap/arm64-v8a/manifest.json"))
     assert metadata["kind"] == "complete"
-    assert metadata["sha256"] == json.loads((root/"validation/clean-runtime-1.3.5.json").read_text())["runtimeSHA256"]
+    assert metadata["sha256"] == json.loads((root/"runtime/desktop-packages.lock.json").read_text())["baseRuntimeSha256"]
     assert "napcat" not in metadata["components"]
     assert not any("napcat" in n.lower() for n in names), "Obsolete resource path in APK"
     library=json.loads(archive.read("assets/bigfish/persona-library.json"))
@@ -80,9 +80,9 @@ if args.previous_apk:
     upgrade = "Same application ID, same signing certificate, increased versionCode, old activity alias retained."
 with apk.open('rb') as stream: checksum = digest(stream)
 dist = root / "dist"; dist.mkdir(exist_ok=True)
-output = dist / f"BigFish-Android-{version}-arm64-v8a.apk"
+output = dist / f"WhaleTalk-Android-{version}-arm64-v8a.apk"
 assert shutil.disk_usage(dist).free + (output.stat().st_size if output.exists() else 0) > apk.stat().st_size + 32 * 1024 * 1024
-shutil.copy2(apk, output)
+if apk.resolve() != output.resolve(): shutil.copy2(apk, output)
 with output.open('rb') as stream: assert digest(stream) == checksum
 report = {"apk": output.name, "bytes": output.stat().st_size, "sha256": checksum, "certificateSHA256": certificate,
           "schemes": ["v1", "v2", "v3"], "applicationId": application_id, "versionName": version, "versionCode": version_code,

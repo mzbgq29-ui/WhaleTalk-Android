@@ -288,7 +288,7 @@
     <string name="ui_not_loaded_yet" formatted="false">"尚未读取"</string>
     <string name="ui_marketplace" formatted="false">"人设市场 ↗"</string>
     <string name="ui_open_external_persona_marketplace" formatted="false">"打开外部人设市场"</string>
-    <string name="ui_search_personas" formatted="false">"搜索人设，例如 大肥鱼"</string>
+    <string name="ui_search_personas" formatted="false">"搜索人设，例如 鲸语"</string>
     <string name="ui_loading_personas" formatted="false">"正在读取人设…"</string>
     <string name="ui_no_personas_yet_select_add_persona_to_create_one" formatted="false">"还没有人设，点击“新增人设”添加"</string>
     <string name="ui_no_matching_personas" formatted="false">"没有找到匹配的人设"</string>

@@ -38,7 +38,7 @@ internal class StudioModel(application: Application) : AndroidViewModel(applicat
     var friends by mutableStateOf("")
     var groups by mutableStateOf("")
     var options by mutableStateOf(BigFishOptions())
-    var wakeWord by mutableStateOf("大肥鱼")
+    var wakeWord by mutableStateOf("鲸语")
     var configured by mutableStateOf(false)
     var configRequest by mutableStateOf<String?>(null)
     var busy by mutableStateOf(false)

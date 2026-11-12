@@ -66,7 +66,7 @@ internal object BigFishConfig {
         .put("replyWithQuote", options.replyWithQuote).put("replyWithMention", options.replyWithMention).put("vision", options.vision)
     fun readOptions(value: JSONObject?): BigFishOptions {
         if (value == null) return BigFishOptions()
-        return BigFishOptions(BigFishResourceMode.valueOf(value.optString("mode", "BALANCED")), value.optString("wakeWord", "大肥鱼"),
+        return BigFishOptions(BigFishResourceMode.valueOf(value.optString("mode", "BALANCED")), value.optString("wakeWord", "鲸语"),
             value.optBoolean("friendNeedsWake"), value.optBoolean("groupMentionOnly"), value.optBoolean("replyWithQuote"),
             value.optBoolean("replyWithMention"), value.optBoolean("vision"))
     }

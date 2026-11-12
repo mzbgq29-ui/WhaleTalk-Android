@@ -25,7 +25,7 @@ internal object BigFishDeviceReport {
         val view = runCatching { WebView.getCurrentWebViewPackage()?.let { "${it.packageName} ${it.versionName}" } }.getOrNull()
         val power = context.getSystemService(PowerManager::class.java)
         return buildString {
-            appendLine("大肥鱼 ${BuildConfig.VERSION_NAME} · 设备自检")
+            appendLine("鲸语 ${BuildConfig.VERSION_NAME} · 设备自检")
             appendLine("Android ${Build.VERSION.RELEASE} / API ${Build.VERSION.SDK_INT}")
             appendLine("系统架构：${Build.SUPPORTED_ABIS.joinToString()}")
             appendLine("ARM64 运行环境：${if (Build.SUPPORTED_ABIS.contains("arm64-v8a")) "架构匹配" else "不支持此设备架构"}")

@@ -101,7 +101,7 @@ def main():
     for p in (home,home/'.config',home/'.cache',home/'.local/share'): p.mkdir(parents=True,exist_ok=True)
     qq_env=dict(env,HOME=str(home),XDG_CONFIG_HOME=str(home/'.config'),XDG_CACHE_HOME=str(home/'.cache'),XDG_DATA_HOME=str(home/'.local/share'),XDG_RUNTIME_DIR=str(runtime),ASTRBOT_COMPAT_PROFILE=str(profile),ASTRBOT_COMPAT_SELF_MEMORY='1')
     launch(['/usr/bin/dbus-run-session','--',str(DESKTOP/'guest-compat'),'--profile',str(qq/'qq'),'--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--in-process-gpu','--disable-gpu-compositing','--disable-features=Vulkan'],env=qq_env,cwd=qq)
-    print('BigFish: SnowLuma ARM64 and bundled QQ '+json.loads((qq/'resources/app/package.json').read_text())['version']+' login desktop started',flush=True)
+    print('WhaleTalk: SnowLuma ARM64 and bundled QQ '+json.loads((qq/'resources/app/package.json').read_text())['version']+' login desktop started',flush=True)
     while not stopping:
         for child in children:
             if child.poll() is not None: raise RuntimeError('QQ service component exited with status '+str(child.returncode))
@@ -111,7 +111,7 @@ def main():
 if __name__=='__main__':
     result=1
     try: result=main()
-    except Exception as exc: print('BigFish SnowLuma: '+str(exc),file=sys.stderr,flush=True)
+    except Exception as exc: print('WhaleTalk SnowLuma: '+str(exc),file=sys.stderr,flush=True)
     finally:
         for child in reversed(children):
             try: os.killpg(child.pid,signal.SIGTERM)

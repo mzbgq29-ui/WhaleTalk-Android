@@ -27,7 +27,7 @@ def resolved(name):
     return result
 sources = resolved("sources.tsv")
 poms = resolved("poms.tsv")
-upgraded = sorted({":".join(name.split(":")[:3]) for name in new.keys() - old.keys() if not name.startswith("AstrBotAndroid:")})
+upgraded = sorted({":".join(name.split(":")[:3]) for name in new.keys() - old.keys() if not name.startswith(("AstrBotAndroid:", "WhaleTalk:"))})
 evidence = []
 license_parents = {}
 for module in upgraded:
@@ -65,7 +65,7 @@ with zipfile.ZipFile(archive) as source, zipfile.ZipFile(temporary, "w", zipfile
     for item in source.infolist():
         if not item.filename.startswith("bigfish/"): target.writestr(item, source.read(item))
     target.writestr("bigfish/LICENSE", (root / "LICENSE").read_bytes())
-    target.writestr("bigfish/AUTHOR.txt", "大肥鱼应用界面与维护：mzbgq。\n开源运行层及社区作品保留各自作者与原许可。\n")
+    target.writestr("bigfish/AUTHOR.txt", "鲸语应用界面与维护：mzbgq。\n开源运行层及社区作品保留各自作者与原许可。\n")
     for path in (root / "docs/artwork").iterdir():
         if path.is_file(): target.writestr("bigfish/artwork/" + path.name, path.read_bytes())
     for item in evidence:

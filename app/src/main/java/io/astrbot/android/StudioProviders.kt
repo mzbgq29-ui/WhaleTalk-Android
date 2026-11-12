@@ -32,7 +32,7 @@ import org.json.JSONObject
     failure?.let { StudioCard("暂时无法读取", it) { StudioTile("运行服务", "先启动思考引擎", { vm.go(StudioPage.SERVICES) })
         StudioTile("本机管理账号", "修改过管理密码时，在这里登录", { vm.go(StudioPage.ACCOUNT) }) } }
     data.forEach { item ->
-        StudioCard(item.optString("id"), when (item.optString("provider_type")) { "embedding" -> "知识库嵌入"; "rerank" -> "检索重排"; else -> "聊天模型" }) {
+        StudioCard(if (item.optString("id") == BigFishConfig.MODEL) "鲸语模型" else item.optString("id"), when (item.optString("provider_type")) { "embedding" -> "知识库嵌入"; "rerank" -> "检索重排"; else -> "聊天模型" }) {
             StudioStatus("模型", item.optString("model", item.optString("embedding_model", item.optString("rerank_model"))))
             StudioStatus("状态", if (item.optBoolean("enable")) "已启用" else "已停用")
             Row {

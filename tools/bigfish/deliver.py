@@ -6,10 +6,10 @@ root=Path(__file__).resolve().parents[2]
 properties=dict(line.split('=',1) for line in (root/'gradle.properties').read_text().splitlines() if '=' in line and not line.startswith('#'))
 version=properties['appVersionName'];dist=root/'dist';dist.mkdir(exist_ok=True)
 raw=root/'app/build/outputs/apk/bundled/release/app-bundled-release.apk'
-apk=dist/f'BigFish-Android-{version}-arm64-v8a.apk'
+apk=dist/f'WhaleTalk-Android-{version}-arm64-v8a.apk'
 if raw.resolve() != apk.resolve(): shutil.copyfile(raw,apk)
 print('Release APK copied:',apk.name,apk.stat().st_size,flush=True)
-archive=dist/f'BigFish-Android-{version}-arm64-v8a.zip'
+archive=dist/f'WhaleTalk-Android-{version}-arm64-v8a.zip'
 with zipfile.ZipFile(archive,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6,allowZip64=True) as z:z.write(apk,apk.name)
 print('APK ZIP created:',archive.name,archive.stat().st_size,flush=True)
 def sha(path):
@@ -26,7 +26,7 @@ for name in ['audit-1.3.2.json','studio-api-routes-1.3.2.json','qq-view-android-
     report=root/'validation'/name
     if report.is_file(): receipt[name.removesuffix('.json')]=json.loads(report.read_text())
 (root/'validation/delivery.json').write_text(json.dumps(receipt,ensure_ascii=False,indent=2))
-source=dist/f'BigFish-Android-{version}-source.zip'
+source=dist/f'WhaleTalk-Android-{version}-source.zip'
 names=subprocess.check_output(['git','ls-files','-z','--cached','--others','--exclude-standard'],cwd=root).decode().split('\0')
 count=0
 with zipfile.ZipFile(source,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as z:
@@ -41,7 +41,7 @@ with zipfile.ZipFile(source,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as z:
   entry.external_attr=(0o100755 if p.stat().st_mode & 0o111 else 0o100644)<<16
   z.writestr(entry,content);count+=1
 print('Source archive created:',count,'files',flush=True)
-for a,b in [('BIGFISH.md','安装说明.md'),('FORK.md','参考与复用.md'),('VALIDATION.md','交付说明.md')]:shutil.copyfile(root/a,dist/b)
+for a,b in [('WHALETALK.md','安装说明.md'),('THIRD_PARTY.md','参考与复用.md'),('VALIDATION.md','交付说明.md')]:shutil.copyfile(root/a,dist/b)
 items=[apk,archive,source,dist/'安装说明.md',dist/'参考与复用.md',dist/'交付说明.md']
 (dist/'SHA256SUMS.txt').write_text(''.join(sha(p)+'  '+p.name+'\n' for p in items))
 print(json.dumps(receipt,ensure_ascii=False,indent=2),flush=True)

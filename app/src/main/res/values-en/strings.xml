@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name" formatted="false">BigFish · One Click</string>
+    <string name="app_name" formatted="false">WhaleTalk · One Click</string>
     <string name="language_title" formatted="false">"Language"</string>
     <string name="language_subtitle" formatted="false">"System default, 简体中文 or English"</string>
     <string name="language_system" formatted="false">"System default"</string>

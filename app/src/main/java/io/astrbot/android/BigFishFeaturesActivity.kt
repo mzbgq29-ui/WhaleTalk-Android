@@ -51,7 +51,7 @@ class BigFishFeaturesActivity : ComponentActivity() {
     private fun web(page: BigFishWebPage) = startActivity(Intent(this, WebUiActivity::class.java)
         .putExtra("serviceId", ServiceId.ASTRBOT.name).putExtra("bigfishPage", page.name))
     private fun copy(value: String) {
-        getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("大肥鱼", value))
+        getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("鲸语", value))
         Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show()
     }
     @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)

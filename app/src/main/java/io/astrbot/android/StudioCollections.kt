@@ -185,7 +185,7 @@ private fun itemText(item: JSONObject): String = listOf("description", "desc", "
                         TextButton(onClick = { selected = item }) { Text("阅读人设") }
                         Row {
                             TextButton(onClick={vm.run("应用人设"){vm.api.applyPersona(item.getString("persona_id"));vm.notice="默认人设已应用；新会话会使用该人设"}},enabled=!vm.busy){Text("设为默认")}
-                            TextButton(onClick={exportPersona=JSONObject(item.toString());export.launch("BigFish-persona.json")}){Text("导出 JSON")}
+                            TextButton(onClick={exportPersona=JSONObject(item.toString());export.launch("WhaleTalk-persona.json")}){Text("导出 JSON")}
                         }
                         Row { TextButton(onClick = { newEditor = false; editor = JSONObject(item.toString()) }) { Text("编辑") }
                             TextButton(onClick = { confirm = "删除这个人设？现有对话不会被一并删除。" to {
@@ -249,14 +249,14 @@ private fun itemText(item: JSONObject): String = listOf("description", "desc", "
             Text("当前显示最近 50 条。", style = MaterialTheme.typography.bodySmall)
     }
     if (page == StudioPage.PERSONAS) StudioCard("内置的鲸鱼") {
-        Text("需要恢复默认大肥鱼人设时，可重新应用内置预设。原有其他人设会保留。", style = MaterialTheme.typography.bodySmall)
+        Text("需要恢复默认鲸语人设时，可重新应用内置预设。原有其他人设会保留。", style = MaterialTheme.typography.bodySmall)
         TextButton(onClick = {
             vm.run("应用内置人设") {
                 val context = vm.getApplication<android.app.Application>()
-                val preset = withContext(Dispatchers.IO) { PersonaLibrary.read(context).firstOrNull { it.name.contains("大肥鱼") } } ?: error("未找到内置人设")
+                val preset = withContext(Dispatchers.IO) { PersonaLibrary.read(context).firstOrNull { it.id == "blue-whale" } } ?: error("未找到内置人设")
                 RuntimeService.command(context, "persona-apply", updateId = preset.id)
             }
-        }) { Text("应用大肥鱼人设") }
+        }) { Text("应用鲸语人设") }
     }
     sessionConfig?.let { origin -> StudioSessionConfiguration(vm,origin){sessionConfig=null} }
     pluginConfig?.let { name -> StudioPluginConfiguration(vm,name){pluginConfig=null} }
