@@ -8,14 +8,22 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.input.pointer.positionChange
 import io.astrbot.android.core.RfbViewport
+import io.astrbot.android.runtime.QqKnownAccounts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
@@ -50,6 +58,12 @@ import kotlin.math.roundToInt
     var saving by remember { mutableStateOf(false) }
     var savedMessage by remember { mutableStateOf<String?>(null) }
     var pendingSnapshot by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var qrText by remember { mutableStateOf<String?>(null) }
+    var qrImage by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var qrFirstSeen by remember { mutableLongStateOf(0L) }
+    var qrLastSeen by remember { mutableLongStateOf(0L) }
+    var qrNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var accounts by remember { mutableStateOf(emptyList<io.astrbot.android.runtime.QqKnownAccount>()) }
     val saveDocument = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
         val image = pendingSnapshot; pendingSnapshot = null
         if (uri != null && image != null) scope.launch {
@@ -74,6 +88,37 @@ import kotlin.math.roundToInt
         lifecycle.lifecycle.addObserver(observer)
         onDispose { lifecycle.lifecycle.removeObserver(observer); client.close() }
     }
+    LaunchedEffect(Unit) {
+        accounts = withContext(Dispatchers.IO) { QqKnownAccounts.list(context) }
+    }
+    LaunchedEffect(client) {
+        while (true) {
+            val frame = client.state.value.bitmap
+            if (frame != null) {
+                val found = withContext(Dispatchers.Default) { QqLoginQr.decode(frame) }
+                val now = System.currentTimeMillis()
+                qrNow = now
+                if (found != null && QqLoginQr.isLikelyLoginPayload(found)) {
+                    if (found != qrText) {
+                        qrText = found
+                        qrFirstSeen = now
+                        val previous = qrImage
+                        qrImage = withContext(Dispatchers.Default) { QqLoginQr.encode(found) }
+                        previous?.recycle()
+                    }
+                    qrLastSeen = now
+                }
+            }
+            kotlinx.coroutines.delay(600)
+        }
+    }
+    LaunchedEffect(qrText) {
+        if (qrText == null) return@LaunchedEffect
+        while (true) {
+            qrNow = System.currentTimeMillis()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(state.message + if (!fit) " 拖动画面移动；滑块验证先切换适应屏幕。" else "", style = MaterialTheme.typography.bodySmall)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -97,6 +142,28 @@ import kotlin.math.roundToInt
             }
         }, enabled = state.bitmap != null && !saving && pendingSnapshot == null) { Text(if (saving) "正在保存…" else "保存登录画面") }
         savedMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        if (accounts.isNotEmpty()) {
+            Text("本机曾登录的账号", style = MaterialTheme.typography.titleSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+            Text("SnowLuma 2.4.2 没有一键登录接口，请在下方 QQ 画面中点选快速登录。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            accounts.forEach { account ->
+                Text(account.label, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        qrImage?.let { image ->
+            val freshness = QqLoginQr.freshness(qrNow, qrFirstSeen, qrLastSeen)
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("登录二维码", style = MaterialTheme.typography.titleSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                Image(image.asImageBitmap(), "QQ 登录二维码",
+                    Modifier.size(240.dp).clip(RoundedCornerShape(16.dp)).background(androidx.compose.ui.graphics.Color.White).padding(12.dp),
+                    contentScale = ContentScale.Fit)
+                Text(when (freshness) {
+                    QrFreshness.STALE -> "二维码可能已过期，请点刷新或查看下方画面"
+                    QrFreshness.LOST -> "画面里暂时看不到二维码，已显示上次内容；可刷新或使用下方登录画面"
+                    else -> "用手机 QQ 扫描上方二维码。识别失败时请直接使用下方登录画面。"
+                }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            }
+        }
+        Text("下方是完整的 QQ 登录画面，验证码、滑块和快速登录都在这里完成。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         NativeQqFrame(state.bitmap, fit, client, Modifier.fillMaxWidth().weight(1f).testTag("qq-native-frame"))
     }
     if (keyboard) AlertDialog(onDismissRequest = { keyboard = false; text = "" }, title = { Text("向 QQ 输入") }, text = {
