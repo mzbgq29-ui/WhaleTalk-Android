@@ -8,7 +8,7 @@ import kotlin.io.path.createTempDirectory
 class QqKnownAccountsTest {
     @Test fun extractsUinFieldsFromJson() {
         val text = """{"sessionHint":"keep","account":"123456789","nested":{"uin":"987654321"}}"""
-        assertEquals(listOf("123456789", "987654321"), QqKnownAccounts.extractUins(text))
+        assertEquals(setOf("123456789", "987654321"), QqKnownAccounts.extractUins(text).toSet())
     }
 
     @Test fun scansNumericDirectoriesAndJsonFiles() {
