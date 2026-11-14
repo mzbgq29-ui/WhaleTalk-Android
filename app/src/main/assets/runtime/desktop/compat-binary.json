@@ -2,9 +2,9 @@
   "schema": 1,
   "architecture": "arm64",
   "file": "libguest-compat.arm64.bin",
-  "bytes": 42640,
-  "sha256": "5130e19c8459b52edb9a503755bc65d6337cfc4261d9f960b516c7aa6ee2a4c0",
-  "sourceSHA256": "bb8d4d5ba0a965d3aa9041481edefad8c820e59a00495465dc4a597ad0f15379",
+  "bytes": 42000,
+  "sha256": "2c02b3b04bc80acf0da8147e3b4247f69c859d3ace645460c8c60a9dc32928d7",
+  "sourceSHA256": "1c3fab4281e6459f7121c422b3d06c4601c3f1594de24369bfc9ea472a7fb257",
   "builtAgainst": "Zig 0.13.0 / aarch64-linux-gnu.2.34",
   "build": "zig cc -target aarch64-linux-gnu.2.34 -shared -fPIC -O2 -Wall -Wextra -Werror -Wl,-z,relro,-z,now -o libguest-compat.arm64.bin guest_compat.c -ldl"
 }
