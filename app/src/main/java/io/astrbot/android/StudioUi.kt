@@ -2,6 +2,7 @@
 // Copyright (c) 2026 mzbgq
 package io.astrbot.android
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -60,7 +61,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 
 @Composable internal fun StudioCard(title: String? = null, subtitle: String? = null, accent: Boolean = false,
     modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    LiquidPanel(modifier.fillMaxWidth(), accent = accent) {
+    LiquidPanel(modifier.fillMaxWidth().animateContentSize(), accent = accent) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (title != null) Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -125,6 +126,26 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
     "社区二创鲸鱼娘", modifier.clip(RoundedCornerShape(30.dp)))
 
 @Composable internal fun StudioEmpty(title: String, message: String) = StudioCard {
-    Text(title, fontWeight = FontWeight.SemiBold)
+    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
     Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+internal enum class StudioBadgeTone { OK, BUSY, WARN, NEUTRAL }
+
+@Composable internal fun StudioBadge(text: String, tone: StudioBadgeTone) {
+    val container = when (tone) {
+        StudioBadgeTone.OK -> MaterialTheme.colorScheme.primaryContainer
+        StudioBadgeTone.BUSY -> MaterialTheme.colorScheme.secondaryContainer
+        StudioBadgeTone.WARN -> MaterialTheme.colorScheme.errorContainer
+        StudioBadgeTone.NEUTRAL -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val content = when (tone) {
+        StudioBadgeTone.OK -> MaterialTheme.colorScheme.onPrimaryContainer
+        StudioBadgeTone.BUSY -> MaterialTheme.colorScheme.onSecondaryContainer
+        StudioBadgeTone.WARN -> MaterialTheme.colorScheme.onErrorContainer
+        StudioBadgeTone.NEUTRAL -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Surface(shape = RoundedCornerShape(50), color = container) {
+        Text(text, Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = content)
+    }
 }

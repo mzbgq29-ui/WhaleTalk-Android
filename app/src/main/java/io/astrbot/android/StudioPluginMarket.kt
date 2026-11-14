@@ -42,14 +42,25 @@ import org.json.JSONObject
         StudioField(query, { query = it; page = 0 }, "搜索插件、作者或功能")
         Text(if (loading) "正在读取市场…" else "找到 ${items.size} 个插件", style = MaterialTheme.typography.bodySmall)
         TextButton(onClick = { refresh++ }, enabled = !loading) { Text("重新读取") }
+        if (vm.busy && vm.task.contains("插件")) {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            Text(vm.task, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+        }
     }
     failure?.let { StudioEmpty("暂时无法连接市场", it) }
+    if (!loading && failure == null && items.isEmpty()) StudioEmpty("没有找到插件", "换个关键词试试，或稍后再读取市场。")
     items.drop(current * 20).take(20).forEach { item ->
         val title = item.optString("display_name", item.optString("name"))
+        val installing = vm.busy && vm.task.contains("插件") && (vm.task.contains(title) || vm.task.contains(item.optString("name")))
         StudioCard(title, item.optString("desc", item.optString("description"))) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (installing) StudioBadge("安装中", StudioBadgeTone.BUSY)
+            }
             StudioStatus("作者", item.optString("author", "社区作者"))
             val repo = item.optString("repo", item.optString("url"))
-            LiquidOutlinedButton(onClick = { install = item }, Modifier.fillMaxWidth(), enabled = !vm.busy && repo.startsWith("https://")) { Text("安装此插件") }
+            LiquidOutlinedButton(onClick = { install = item }, Modifier.fillMaxWidth(), enabled = !vm.busy && repo.startsWith("https://")) {
+                Text(if (installing) "正在安装…" else "安装此插件")
+            }
         }
     }
     if (pages > 1) Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

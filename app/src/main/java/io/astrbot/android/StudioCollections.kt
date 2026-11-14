@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -111,6 +112,7 @@ private fun itemText(item: JSONObject): String = listOf("description", "desc", "
     var failure by remember(page) { mutableStateOf<String?>(null) }
     var refresh by remember(page) { mutableIntStateOf(0) }
     var query by rememberSaveable(page) { mutableStateOf("") }
+    var pluginFilter by rememberSaveable(page) { mutableStateOf("all") }
     var selected by remember(page) { mutableStateOf<JSONObject?>(null) }
     var editor by remember(page) { mutableStateOf<JSONObject?>(null) }
     var newEditor by remember(page) { mutableStateOf(false) }
@@ -165,6 +167,10 @@ private fun itemText(item: JSONObject): String = listOf("description", "desc", "
         StudioTile("启动思考引擎", "在运行服务中启动 AstrBot，再回来刷新", { vm.go(StudioPage.SERVICES) })
         StudioTile("本机管理账号", "如果修改过后台密码，在这里重新登录", { vm.go(StudioPage.ACCOUNT) })
     }
+    if (page == StudioPage.PLUGINS && vm.busy && vm.task.contains("插件")) StudioCard("正在处理插件") {
+        LinearProgressIndicator(Modifier.fillMaxWidth())
+        Text(vm.task, style = MaterialTheme.typography.bodySmall)
+    }
     if (page == StudioPage.STATS && data is JSONObject) {
         val stats = data as JSONObject
         StudioCard("陪伴一览", "统计来自本机引擎，不代表云端账户余额。") {
@@ -176,8 +182,37 @@ private fun itemText(item: JSONObject): String = listOf("description", "desc", "
         }
     } else {
         val all = jsonRows(data, "conversations", "sessions", "plugins", "knowledge_bases", "jobs")
+        fun pluginState(item: JSONObject): String {
+            val enabled = item.optBoolean("activated")
+            val failed = item.optString("error").ifBlank { item.optString("fail_reason") }
+            val installing = vm.busy && vm.task.contains("插件") &&
+                (vm.task.contains(itemTitle(item)) || vm.task.contains(item.optString("name")))
+            return when {
+                installing -> "installing"
+                failed.isNotBlank() && !enabled -> "failed"
+                enabled -> "enabled"
+                else -> "disabled"
+            }
+        }
         val items = all.filter { query.isBlank() || (itemTitle(it) + itemText(it)).contains(query.trim(), true) }
-        if (!loading && failure == null && items.isEmpty()) StudioEmpty("这里还空着", if (query.isBlank()) "使用一段时间后，内容会出现在这里。" else "没有找到匹配内容，试试其他关键词。")
+            .filter { page != StudioPage.PLUGINS || pluginFilter == "all" || pluginState(it) == pluginFilter }
+        if (page == StudioPage.PLUGINS) {
+            val counts = all.groupingBy { pluginState(it) }.eachCount()
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    "all" to "全部 ${all.size}",
+                    "enabled" to "已启用 ${counts["enabled"] ?: 0}",
+                    "disabled" to "未启用 ${counts["disabled"] ?: 0}",
+                    "failed" to "失败 ${counts["failed"] ?: 0}",
+                ).forEach { (id, label) ->
+                    FilterChip(selected = pluginFilter == id, onClick = { pluginFilter = id }, label = { Text(label) })
+                }
+            }
+        }
+        if (!loading && failure == null && items.isEmpty()) StudioEmpty(
+            if (page == StudioPage.PLUGINS) "没有符合筛选的插件" else "这里还空着",
+            if (page == StudioPage.PLUGINS) "试试其他筛选，或到插件市场安装。" else if (query.isBlank()) "使用一段时间后，内容会出现在这里。" else "没有找到匹配内容，试试其他关键词。"
+        )
         items.forEach { item ->
             StudioCard(QqPlatform.display(itemTitle(item)), QqPlatform.display(itemText(item)).ifBlank { null }) {
                 when (page) {
@@ -195,18 +230,34 @@ private fun itemText(item: JSONObject): String = listOf("description", "desc", "
                     StudioPage.PLUGINS -> {
                         val enabled = item.optBoolean("activated")
                         val failed = item.optString("error").ifBlank { item.optString("fail_reason") }
-                        StudioStatus("当前状态", when {
-                            vm.busy && vm.task.contains("插件") -> "正在安装或更新…"
-                            failed.isNotBlank() && !enabled -> "安装或加载失败"
-                            enabled -> "已启用"
-                            else -> "未启用"
-                        }, if (failed.isNotBlank() && !enabled) false else enabled)
-                        if (failed.isNotBlank()) Text(failed, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                        val stateKey = pluginState(item)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            StudioBadge(when (stateKey) {
+                                "installing" -> "安装中"
+                                "failed" -> "失败"
+                                "enabled" -> "已启用"
+                                else -> "未启用"
+                            }, when (stateKey) {
+                                "installing" -> StudioBadgeTone.BUSY
+                                "failed" -> StudioBadgeTone.WARN
+                                "enabled" -> StudioBadgeTone.OK
+                                else -> StudioBadgeTone.NEUTRAL
+                            })
+                            if (item.optBoolean("reserved")) StudioBadge("内置", StudioBadgeTone.NEUTRAL)
+                        }
+                        if (failed.isNotBlank()) {
+                            Text("失败原因", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                            Text(failed, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                        }
+                        item.optString("desc").ifBlank { item.optString("description") }.takeIf { it.isNotBlank() }?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         TextButton(onClick={pluginConfig=item.getString("name")}){Text("插件配置")}
                         StudioStatus("作者", item.optString("author", "未知")); StudioStatus("版本", item.optString("version", "未知"))
-                        StudioSwitch("启用插件", "开关会立即应用到机器人", item.optBoolean("activated"), !vm.busy && !item.optBoolean("reserved")) { value ->
+                        StudioSwitch("启用插件", "开关会立即应用到机器人，配置也在本页完成，不必再打开网页后台。", item.optBoolean("activated"), !vm.busy && !item.optBoolean("reserved") && stateKey != "installing") { value ->
                             vm.run("调整插件") { vm.api.bot("/api/plugin/" + if (value) "on" else "off", "POST", JSONObject().put("name", item.getString("name"))); refresh++ }
                         }
+                        if (stateKey == "failed") TextButton(onClick = { refresh++ }, enabled = !vm.busy) { Text("重新加载列表") }
                         if (!item.optBoolean("reserved")) TextButton(onClick = { confirm = "卸载 ${itemTitle(item)}？插件数据是否保留由该插件决定。" to {
                             vm.run("卸载插件") { vm.api.bot("/api/plugin/uninstall", "POST", JSONObject().put("name", item.getString("name"))); refresh++ }
                         } }) { Text("卸载") }
