@@ -532,8 +532,9 @@ private fun channelLabel(state: ManagerState, qq: ServiceStatus): String = when 
         StudioStatus("SnowLuma", layerLabel(qq), qq.ready)
         StudioStatus("Linux QQ", qqAccountLabel(state, qq), qq.qq == QqState.ONLINE)
         StudioStatus("AstrBot", layerLabel(bot), bot.ready)
+        val retryDelay = reconnect.delayMillis
         if (reconnect.exhausted) Text("自动重连已暂停：${reconnect.layer ?: "服务"}多次恢复失败，请手动检查。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-        else if (reconnect.delayMillis != null) Text("正在自动重连${reconnect.layer ?: ""}（第 ${reconnect.attempt} 次，约 ${reconnect.delayMillis / 1000} 秒后重试）。", style = MaterialTheme.typography.bodySmall)
+        else if (retryDelay != null) Text("正在自动重连${reconnect.layer ?: ""}（第 ${reconnect.attempt} 次，约 ${retryDelay / 1000} 秒后重试）。", style = MaterialTheme.typography.bodySmall)
     }
     if (!exempt && (qq.desiredRunning || bot.desiredRunning)) StudioCard("后台容易被系统结束") {
         Text(if (colorOs) "ColorOS 还需要在「应用启动管理」中允许鲸语自启动和关联启动，并在最近任务中锁定应用。" else "建议先关闭电池优化，再在系统设置里允许后台运行。")

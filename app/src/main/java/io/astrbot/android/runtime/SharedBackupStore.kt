@@ -34,9 +34,9 @@ class SharedBackupSettings(context: Context) {
     }
     fun lastSuccess(): Long = preferences.getLong(SUCCESS, 0)
     fun lastAttempt(): Long = preferences.getLong(ATTEMPT, 0)
-    fun markAttempt(now: Long) { check(preferences.edit().putLong(ATTEMPT, now).commit()) }
-    fun markSuccess(now: Long) { check(preferences.edit().putLong(ATTEMPT, now).putLong(SUCCESS, now).commit()) }
-    fun isDue(now: Long): Boolean {
+    fun markAttempt(now: Long = System.currentTimeMillis()) { check(preferences.edit().putLong(ATTEMPT, now).commit()) }
+    fun markSuccess(now: Long = System.currentTimeMillis()) { check(preferences.edit().putLong(ATTEMPT, now).putLong(SUCCESS, now).commit()) }
+    fun isDue(now: Long = System.currentTimeMillis()): Boolean {
         val period = when (interval()) {
             SharedBackupInterval.OFF -> return false
             SharedBackupInterval.DAILY -> 20L * 60 * 60 * 1000
@@ -46,7 +46,7 @@ class SharedBackupSettings(context: Context) {
         if (lastAttempt() != 0L && now - lastAttempt() < 3L * 60 * 60 * 1000) return false
         return true
     }
-    fun nextAt(now: Long): Long {
+    fun nextAt(now: Long = System.currentTimeMillis()): Long {
         val period = when (interval()) {
             SharedBackupInterval.OFF -> return 0
             SharedBackupInterval.DAILY -> 24L * 60 * 60 * 1000

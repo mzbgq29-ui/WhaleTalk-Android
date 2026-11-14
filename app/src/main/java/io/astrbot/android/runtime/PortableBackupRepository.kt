@@ -42,13 +42,12 @@ class PortableBackupRepository(private val context: Context) {
                 FileOutputStream(inputFile).use { output -> transfer(input, output, imports); output.fd.sync() }
             }
             progress(AppText.get(R.string.ui_verifying_portable_backup_scope_versions_and_file_digests))
-            if (SharedBackupArchive().peekFormat(inputFile) == SharedBackupArchive.FORMAT) {
-                SharedBackupArchive().read(inputFile, data, versions)
-                inputFile.delete()
-            } else {
-                archive.read(inputFile, data, versions)
-                inputFile.delete()
-            }
+            val info = if (SharedBackupArchive().peekFormat(inputFile) == SharedBackupArchive.FORMAT) {
+                val shared = SharedBackupArchive().read(inputFile, data, versions)
+                PortableBackupInfo(shared.id, shared.createdAt, shared.bytes, shared.count, shared.versions)
+            } else archive.read(inputFile, data, versions)
+            inputFile.delete()
+            info
         } catch (failure: Throwable) { discardImport(); throw failure }
     }
 

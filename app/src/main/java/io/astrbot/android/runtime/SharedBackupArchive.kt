@@ -172,7 +172,7 @@ internal class SharedBackupArchive {
                             requireLocalized(attrs.size() <= MAX_FILE) { "共享备份中的单个文件过大" }
                             total += attrs.size()
                             requireLocalized(total <= MAX_UNPACKED) { "共享备份解开后超过限制" }
-                            val hash = file.toFile().inputStream().use { copy(it, null, attrs.size()) }
+                            val hash = file.toFile().inputStream().use { copyBlocking(it, null, attrs.size(), coroutine) }
                             entries += Entry(name, "file", attrs.size(), hash, Os.lstat(file.toString()).st_mode and 64 != 0)
                         }
                         attrs.isSymbolicLink -> {
@@ -190,11 +190,13 @@ internal class SharedBackupArchive {
         return entries.distinctBy { it.name }.sortedBy { it.name }
     }
 
-    private suspend fun copy(input: InputStream, output: OutputStream?, expected: Long): String {
+    private suspend fun copy(input: InputStream, output: OutputStream?, expected: Long): String =
+        copyBlocking(input, output, expected, currentCoroutineContext())
+
+    private fun copyBlocking(input: InputStream, output: OutputStream?, expected: Long, coroutine: kotlin.coroutines.CoroutineContext): String {
         val hash = MessageDigest.getInstance("SHA-256")
         val buffer = ByteArray(128 * 1024)
         var size = 0L
-        val coroutine = currentCoroutineContext()
         while (true) {
             coroutine.ensureActive()
             val count = input.read(buffer)
