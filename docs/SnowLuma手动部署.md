@@ -24,7 +24,7 @@ App 默认使用 NapCat 接入 QQ。希望了解其他 OneBot 接入方案的用
 
 本文参考官方资料，结合本项目已有的手机手动部署记录整理。App 提供通用 Ubuntu、桌面、原版 QQ 和终端；SnowLuma 由用户另外从官方获取。本教程不附带 SnowLuma 程序、原生库或修改版，命令示例需用户自行复制执行，也不代表上游对本 App 或本文的背书。
 
-**先阅读许可再继续。** SnowLuma 采用[源码可见非商业许可](https://github.com/SnowLuma/SnowLuma/blob/v2.2.1/LICENSE)，不是 OSI 定义的开源许可，原生组件另受 [EULA](https://github.com/SnowLuma/SnowLuma/blob/v2.2.1/EULA.md) 约束。其 EULA 第 5.4 条要求第三方打包、自动化脚本部署及商业使用等事先取得书面授权。本文按个人非商业、手动使用官方原包的情形编写；手动操作和保留原包不构成额外许可，具体兼容启动方式有疑义时请向著作权人确认。更多来源见[文末](#来源与许可)。
+**先阅读许可再继续。** 原官方仓库 `github.com/SnowLuma/SnowLuma` 目前返回 404，本教程改用与发行溯源一致的 [MimoKit/SnowLuma](https://github.com/MimoKit/SnowLuma) 镜像。应用主流程仍使用 APK 内置的 2.4.2，不必再手动下载。 SnowLuma 采用[源码可见非商业许可](https://github.com/MimoKit/SnowLuma/blob/v2.4.2/LICENSE)，不是 OSI 定义的开源许可，原生组件另受 [EULA](https://github.com/MimoKit/SnowLuma/blob/v2.4.2/EULA.md) 约束。其 EULA 第 5.4 条要求第三方打包、自动化脚本部署及商业使用等事先取得书面授权。本文按个人非商业、手动使用官方原包的情形编写；手动操作和保留原包不构成额外许可，具体兼容启动方式有疑义时请向著作权人确认。更多来源见[文末](#来源与许可)。
 
 当前 App 内的专用部署引导、启停及凭据辅助入口为预览功能，其适用许可范围仍需确认。`LICENSE` 第 4(b) 条还限制未经书面授权“基于本软件开发、发布或分发另一个项目”。命令由用户粘贴、准备与启动分开，以及不内置程序，均不能单独证明这些入口已获许可；条文也未明确列出启停按钮或凭据代填的豁免。这些专用集成行为的许可范围应向著作权人确认。本教程及来源注释不构成书面授权。
 
@@ -34,8 +34,8 @@ App 默认使用 NapCat 接入 QQ。希望了解其他 OneBot 接入方案的用
 | --- | --- |
 | 手机 | Android 8.0 及以上，ARM64 系统，无需手机 Root |
 | AstrBot for Android | **1.4.1 / 10048**，扩展中有 **Linux QQ** 入口 |
-| 独立原版 Linux QQ | **3.2.34-53644**，从 App 扩展页安装 |
-| SnowLuma | **v2.2.1 Linux ARM64 完整包**，使用包内 Node.js |
+| 独立原版 Linux QQ | **3.2.35-54395**，从 App 扩展页安装 |
+| SnowLuma | **v2.4.2 Linux ARM64 完整包**，使用包内 Node.js |
 | 模型服务 | 自己的 API 地址、Key 和可用模型 |
 
 上述 QQ / SnowLuma 组合此前已完成手机端实际消息往返；本篇菜单按 1.4.1 调整，旧版操作见 [1.4.0 教程](https://github.com/JunWan666/astrbot-for-android/blob/v1.4.0/docs/SnowLuma手动部署.md)或 [1.3.0 教程](https://github.com/JunWan666/astrbot-for-android/blob/v1.3.0/docs/SnowLuma手动部署.md)。更换 QQ 或 SnowLuma 版本时，应重新确认兼容性，不直接套用旧库路径和启动参数。
@@ -46,7 +46,7 @@ App 默认使用 NapCat 接入 QQ。希望了解其他 OneBot 接入方案的用
 
 1. 安装本项目 1.4.1 完整 APK，打开后完成环境初始化。已有正式版可保留数据覆盖安装。
 2. 初始化会离线准备桌面、编译工具和 `guest-compat`；已有环境首次使用时补齐依赖，必要时到 **Linux QQ → QQ 设置 → 修复内置桌面** 重试。
-3. 进入 **设置 → 扩展组件 → Linux QQ**，点击 **安装 QQ**，确认版本为 **3.2.34-53644**。已有旧版时使用更新入口。
+3. 进入 **设置 → 扩展组件 → Linux QQ**，点击 **安装 QQ**，确认版本为 **3.2.35-54395**。已有旧版时使用更新入口。
 4. **本步只安装，暂不启动 QQ**，安装完成后返回引导，进入第 2 步；已经安装可直接继续。App 内引导第 1 步“安装 QQ”会进入只安装的确认流程，完成后不会自动启动。若之前已经打开 QQ，第 3 步会按需重启。回首页，**只启动 AstrBot，让 NapCat 保持停止**。
 5. 在 **设置 → 后台运行** 中按本机系统提示配置通知、电池和后台权限。
 
@@ -60,17 +60,17 @@ App 内引导归为四步：**准备桌面与 QQ → 准备程序与兼容配置
 
 引导中的关键词加粗，路径与版本采用等宽样式。第 2 步将创建目录、下载、校验、解压及保存 QQ 兼容配置合为一个命令块，每项以 `# 1.` 至 `# 5.` 编号，并用空行分隔。注释为绿色，命令为蓝色，长行自动换行。代码块内部可上下滚动，页面说明、复制、终端及上下步按钮固定显示；“复制命令”始终复制完整的五项命令和注释，不受滚动位置影响。QQ 和 SnowLuma 的启动仍在后续操作。
 
-以下命令从[官方 v2.2.1 Release](https://github.com/SnowLuma/SnowLuma/releases/tag/v2.2.1) 下载 **Linux ARM64 完整包**，约 50 MiB，并核对固定 SHA-256 后解压。本教程不使用 Lite、x64 或 Windows 包。可整段复制到 Ubuntu 终端执行：
+以下命令从[当前镜像 v2.4.2 Release](https://github.com/MimoKit/SnowLuma/releases/tag/v2.4.2) 下载 **Linux ARM64 完整包**，约 50 MiB，并核对固定 SHA-256 后解压。本教程不使用 Lite、x64 或 Windows 包。可整段复制到 Ubuntu 终端执行：
 
 ```bash
 # 1. 创建并进入目录
 mkdir -p '/persistent/SnowLuma' && cd '/persistent/SnowLuma' &&
 
 # 2. 下载官方完整包
-curl -fL --retry 2 -o SnowLuma.tar.gz https://github.com/SnowLuma/SnowLuma/releases/download/v2.2.1/SnowLuma-v2.2.1-linux-arm64.tar.gz &&
+curl -fL --retry 2 -o SnowLuma.tar.gz https://github.com/MimoKit/SnowLuma/releases/download/v2.4.2/SnowLuma-v2.4.2-linux-arm64.tar.gz &&
 
 # 3. 校验 SHA-256，失败不解压
-printf '%s  %s\n' '26727d30109a5a7cc19e95f7c7a7ca9cbf9eb17adce7c122129e96bda88a2945' 'SnowLuma.tar.gz' | sha256sum -c - &&
+printf '%s  %s\n' '56c267591c82a7a1dacc913dd46473c821ff2d9209252ed093f802944321d57f' 'SnowLuma.tar.gz' | sha256sum -c - &&
 
 # 4. 解压官方完整包
 tar -xzf SnowLuma.tar.gz &&
@@ -229,11 +229,11 @@ guest-compat clear-profile
 
 本文由本项目维护者独立整理，更新于 **2026-11-02**。下列官方资料用于确认项目定位、安装入口、接口和许可；手机端路径、App 菜单、`guest-compat` 配置及 AstrBot 对接步骤结合已有实测记录编写，不是 SnowLuma 官方 Android 部署承诺。
 
-- [SnowLuma 官方仓库与 README](https://github.com/SnowLuma/SnowLuma)：项目介绍、运行入口及 OneBot v11 能力。
+- [SnowLuma 官方仓库与 README](https://github.com/MimoKit/SnowLuma)：项目介绍、运行入口及 OneBot v11 能力。
 - [SnowLuma 官方部署指南](https://snowluma.github.io/zh/docs/guide/deploy)与[动作参考](https://snowluma.github.io/zh/docs/api)。
-- [SnowLuma v2.2.1 官方发行页](https://github.com/SnowLuma/SnowLuma/releases/tag/v2.2.1)：本文 ARM64 完整包的下载来源与摘要。
-- [v2.2.1 LICENSE](https://github.com/SnowLuma/SnowLuma/blob/v2.2.1/LICENSE)：非商业使用范围、再分发条件、修改版及衍生项目限制。
-- [v2.2.1 EULA](https://github.com/SnowLuma/SnowLuma/blob/v2.2.1/EULA.md)：官方二进制及专有原生组件的补充条款，尤其第 5 条。
+- [SnowLuma v2.4.2 镜像发行页](https://github.com/MimoKit/SnowLuma/releases/tag/v2.4.2)：本文 ARM64 完整包的下载来源与摘要。
+- [v2.4.2 LICENSE](https://github.com/MimoKit/SnowLuma/blob/v2.4.2/LICENSE)：非商业使用范围、再分发条件、修改版及衍生项目限制。
+- [v2.4.2 EULA](https://github.com/MimoKit/SnowLuma/blob/v2.4.2/EULA.md)：官方二进制及专有原生组件的补充条款，尤其第 5 条。
 - [NapCat README](https://github.com/NapNeko/NapCatQQ#new-framework-)：本文背景部分所引推荐的来源，保留其 NapCat Gui 表述。
 - [AstrBot 官方文档](https://docs.astrbot.app/)：模型提供商、OneBot 平台与回复规则的详细配置。
 

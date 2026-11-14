@@ -193,6 +193,15 @@ private fun itemText(item: JSONObject): String = listOf("description", "desc", "
                             } }) { Text("删除") } }
                     }
                     StudioPage.PLUGINS -> {
+                        val enabled = item.optBoolean("activated")
+                        val failed = item.optString("error").ifBlank { item.optString("fail_reason") }
+                        StudioStatus("当前状态", when {
+                            vm.busy && vm.task.contains("插件") -> "正在安装或更新…"
+                            failed.isNotBlank() && !enabled -> "安装或加载失败"
+                            enabled -> "已启用"
+                            else -> "未启用"
+                        }, if (failed.isNotBlank() && !enabled) false else enabled)
+                        if (failed.isNotBlank()) Text(failed, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                         TextButton(onClick={pluginConfig=item.getString("name")}){Text("插件配置")}
                         StudioStatus("作者", item.optString("author", "未知")); StudioStatus("版本", item.optString("version", "未知"))
                         StudioSwitch("启用插件", "开关会立即应用到机器人", item.optBoolean("activated"), !vm.busy && !item.optBoolean("reserved")) { value ->

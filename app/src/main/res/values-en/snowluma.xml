@@ -46,8 +46,8 @@
     <string name="snow_step_profile">QQ sign-in and startup</string>
     <string name="snow_step_astrbot">Connection and runtime notes</string>
     <string name="snow_qq_install_page">Install QQ</string>
-    <string name="snow_environment_detail">Complete **environment initialization**, then use the button below to install original Linux QQ `3.2.34-53644`.\n\n**Install only; leave QQ stopped for now.** Return after installation and continue to step 2. Skip installation if QQ is already installed.\n\nStart **only AstrBot** on the home page. Keep **SnowLuma stopped** and do not use Start all.</string>
-    <string name="snow_package_detail">The official **v2.2.1 ARM64 complete package** is about 50 MiB. **Copy the full block** to the Ubuntu terminal and run it. Any failure stops the remaining commands. Continue to step 3 after `Optional desktop startup profile saved.` appears.</string>
+    <string name="snow_environment_detail">Complete **environment initialization**, then use the button below to install original Linux QQ `3.2.35-54395`.\n\n**Install only; leave QQ stopped for now.** Return after installation and continue to step 2. Skip installation if QQ is already installed.\n\nStart **only AstrBot** on the home page. Keep **SnowLuma stopped** and do not use Start all.</string>
+    <string name="snow_package_detail">The current mirrored **v2.4.2 ARM64 complete package** is about 50 MiB. **Copy the full block** to the Ubuntu terminal and run it. Any failure stops the remaining commands. Continue to step 3 after `Optional desktop startup profile saved.` appears.</string>
     <string name="snow_command_scroll_hint">Scroll within the code block for all 5 items; Copy includes everything</string>
     <string name="snow_package_directory">Create and enter the directory</string>
     <string name="snow_package_download">Download the official complete package</string>

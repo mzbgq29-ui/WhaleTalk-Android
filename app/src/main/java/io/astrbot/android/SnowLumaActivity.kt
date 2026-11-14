@@ -271,8 +271,8 @@ class SnowLumaActivity : LocalizedActivity() {
                         }
                         ManagerSection(AppText.get(R.string.snow_about)) {
                             Text(AppText.get(R.string.snow_sources), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            ManagerActionButton(AppText.get(R.string.snow_license), { external("https://github.com/SnowLuma/SnowLuma/blob/v2.2.1/LICENSE") }, Modifier.fillMaxWidth(), ActionTone.NEUTRAL)
-                            ManagerActionButton("EULA", { external("https://github.com/SnowLuma/SnowLuma/blob/v2.2.1/EULA.md") }, Modifier.fillMaxWidth(), ActionTone.NEUTRAL)
+                            ManagerActionButton(AppText.get(R.string.snow_license), { external("https://github.com/MimoKit/SnowLuma/blob/v2.4.2/LICENSE") }, Modifier.fillMaxWidth(), ActionTone.NEUTRAL)
+                            ManagerActionButton("EULA", { external("https://github.com/MimoKit/SnowLuma/blob/v2.4.2/EULA.md") }, Modifier.fillMaxWidth(), ActionTone.NEUTRAL)
                             ManagerActionButton(AppText.get(R.string.snow_tutorial), { external("https://github.com/JunWan666/astrbot-for-android/blob/main/docs/SnowLuma手动部署.md") }, Modifier.fillMaxWidth(), ActionTone.NEUTRAL)
                         }
                     }

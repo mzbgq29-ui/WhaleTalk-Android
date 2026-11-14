@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -59,6 +60,10 @@ open class BigFishStudioActivity : ComponentActivity() {
         val keyboard = WindowInsets.ime.getBottom(LocalDensity.current) > 0
         val roots = listOf(StudioPage.HOME, StudioPage.CHAT, StudioPage.TOOLS, StudioPage.ME)
         val root = vm.page in roots
+        val context = LocalContext.current
+        val diagnostics = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+            if (uri != null) RuntimeService.command(context, "export-diagnostics", sourceUri = uri.toString())
+        }
         BackHandler { if (!vm.back()) { if (!root && vm.page != StudioPage.SETUP) vm.go(StudioPage.HOME, true) else exit() } }
         LaunchedEffect(vm.loaded) {
             if (vm.loaded && firstCreation) {
@@ -93,7 +98,11 @@ open class BigFishStudioActivity : ComponentActivity() {
                 }
                 if (vm.busy || state.busy) StudioCard {
                     Text(if (vm.busy) vm.task else state.phase, style = MaterialTheme.typography.bodySmall)
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    val fraction = state.progressFraction
+                    if (!vm.busy && fraction != null) {
+                        LinearProgressIndicator(progress = { fraction.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                        Text("${(fraction.coerceIn(0f, 1f) * 100).toInt()}%", style = MaterialTheme.typography.labelSmall)
+                    } else LinearProgressIndicator(Modifier.fillMaxWidth())
                     TextButton(onClick = { if (vm.busy) vm.cancel() else command("stop", null) }) { Text(if (vm.busy) "取消当前操作" else "取消任务并停止服务") }
                 }
             }
@@ -119,6 +128,7 @@ open class BigFishStudioActivity : ComponentActivity() {
                         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(text, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                             TextButton(onClick = { vm.go(StudioPage.LOGS) }) { Text("日志") }
+                            TextButton(onClick = { diagnostics.launch("WhaleTalk-diagnostics.zip") }) { Text("导出诊断包") }
                         }
                     }
                 }
@@ -171,9 +181,10 @@ open class BigFishStudioActivity : ComponentActivity() {
     if (!state.componentsReady || !vm.configured) StudioCard {
         StudioTile("完成初次设置", "准备环境、连接模型，再登录 QQ。", { vm.go(StudioPage.SETUP) })
     }
+    if (state.busy || qq.desiredRunning) StartupChecklist(state, qq, vm.configured)
     StudioCard("连接一览") {
-        StudioStatus("QQ 账号", when (qq.qq) { QqState.ONLINE -> "已登录"; QqState.OFFLINE -> "已掉线"; QqState.VERIFICATION_REQUIRED -> "等待验证"; else -> "尚未连接" }, qq.qq == QqState.ONLINE)
-        StudioStatus("消息通道", if (qq.oneBot == OneBotState.CONNECTED) "已连通" else "等待连接", qq.oneBot == OneBotState.CONNECTED)
+        StudioStatus("QQ 账号", qqAccountLabel(state, qq), qq.qq == QqState.ONLINE)
+        StudioStatus("消息通道", channelLabel(state, qq), qq.oneBot == OneBotState.CONNECTED)
         StudioStatus("云端模型", if (vm.configured) vm.model else "尚未配置", vm.configured)
         StudioTile("QQ 登录与连接", "打开登录画面，处理验证或重新登录", { vm.go(StudioPage.QQ) })
     }
@@ -354,6 +365,24 @@ open class BigFishStudioActivity : ComponentActivity() {
         }
         Text("在 QQ 中单独发送纯文字 #sl，不要同时 @、引用或带图片。默认两次查询至少间隔 5 秒；已有的自定义触发词和冷却时间会保留。", style = MaterialTheme.typography.bodySmall)
     }
+    StudioCard("QQ 版本锁定") {
+        var versionLock by remember { mutableStateOf(snowLuma.versionLockEnabled()) }
+        val pinned = remember(context) { QqHotUpdateGuard.pinnedVersion(context) }
+        StudioSwitch("锁定 Linux QQ 版本", "默认开启。发现热更新模块时，会把当前版本改回 $pinned，并把新版本记入错误列表。不会删除账号数据。", versionLock, !state.busy && !vm.busy) { value ->
+            runCatching {
+                snowLuma.setVersionLockEnabled(value)
+                versionLock = value
+            }.onFailure { vm.error = "QQ 版本锁定设置未能保存，请重试" }
+        }
+    }
+    StudioCard("掉线通知") {
+        val alerts = remember(context) { ConnectionAlerts(context) }
+        var disconnectAlerts by remember { mutableStateOf(alerts.enabled()) }
+        StudioSwitch("QQ 或消息通道掉线时通知我", "只在已经成功连接之后断开时提醒，启动过程中的「未知」状态不会通知。", disconnectAlerts, !vm.busy) { value ->
+            runCatching { alerts.setEnabled(value); disconnectAlerts = value }
+                .onFailure { vm.error = "掉线通知设置未能保存，请重试" }
+        }
+    }
     StudioCard("画面与占用") {
         StudioSwitch("完整电脑桌面", "默认使用 720×960 手机竖屏。若验证窗口放不下，可切换为 1280×800 完整桌面；修改会重启 QQ 服务。", fullDesktop, !state.busy && !vm.busy) { value ->
             runCatching {
@@ -389,7 +418,9 @@ open class BigFishStudioActivity : ComponentActivity() {
         }
     }
     StudioCard("偏好") {
-        listOf(StudioPage.ACCESS, StudioPage.BACKGROUND, StudioPage.APPEARANCE, StudioPage.ACCOUNT).forEach { p -> StudioTile(p.title, p.section, { vm.go(p) }) }
+        listOf(StudioPage.APPEARANCE, StudioPage.ACCESS, StudioPage.BACKGROUND, StudioPage.ACCOUNT).forEach { p ->
+            StudioTile(p.title, if (p == StudioPage.APPEARANCE) "浅色、深色或跟随系统" else p.section, { vm.go(p) })
+        }
     }
     StudioCard("更多") {
         listOf(StudioPage.DIAGNOSTICS, StudioPage.GUIDE, StudioPage.ABOUT, StudioPage.LICENSES).forEach { p -> StudioTile(p.title, p.section, { vm.go(p) }) }
@@ -412,5 +443,47 @@ open class BigFishStudioActivity : ComponentActivity() {
         StudioTile("查看日志", "启动失败、掉线与配置问题", { vm.go(StudioPage.LOGS) })
         StudioTile("初次设置", "准备环境和连接模型", { vm.go(StudioPage.SETUP) })
         LiquidOutlinedButton(onClick = { command("reconcile", null) }, Modifier.fillMaxWidth(), enabled = !state.busy) { Text("恢复中断的任务") }
+    }
+}
+
+private fun preparingRuntime(state: ManagerState): Boolean {
+    val phase = state.phase
+    return state.busy && listOf("准备 SnowLuma", "校验内置包", "解压", "切换运行层", "清理旧文件").any { it in phase }
+}
+
+private fun qqAccountLabel(state: ManagerState, qq: ServiceStatus): String = when {
+    preparingRuntime(state) -> "正在准备运行层"
+    qq.qq == QqState.ONLINE -> "已登录"
+    qq.qq == QqState.OFFLINE -> "已掉线"
+    qq.qq == QqState.VERIFICATION_REQUIRED -> "等待验证"
+    qq.desiredRunning && qq.process == ProcessState.RUNNING -> "已启动，等待登录"
+    qq.desiredRunning || state.busy -> "正在启动"
+    else -> "尚未连接"
+}
+
+private fun channelLabel(state: ManagerState, qq: ServiceStatus): String = when {
+    qq.oneBot == OneBotState.CONNECTED -> "已连通"
+    preparingRuntime(state) -> "等待运行层准备完成"
+    qq.desiredRunning && qq.process == ProcessState.RUNNING && qq.qq == QqState.ONLINE -> "已登录，等待消息通道"
+    qq.desiredRunning || state.busy -> "等待连接"
+    else -> "等待连接"
+}
+
+@Composable private fun StartupChecklist(state: ManagerState, qq: ServiceStatus, configured: Boolean) {
+    val prepared = state.componentsReady && !preparingRuntime(state)
+    val started = qq.process == ProcessState.RUNNING || qq.ready
+    val loggedIn = qq.qq == QqState.ONLINE
+    val connected = qq.oneBot == OneBotState.CONNECTED
+    StudioCard("启动进度") {
+        StudioStatus("环境就绪", if (state.componentsReady) "完成" else "进行中", state.componentsReady)
+        StudioStatus("准备运行层", when {
+            preparingRuntime(state) -> state.phase
+            prepared -> "完成"
+            else -> "等待开始"
+        }, prepared)
+        StudioStatus("启动服务", if (started) "完成" else if (prepared && qq.desiredRunning) "进行中" else "等待开始", started)
+        StudioStatus("扫码登录", if (loggedIn) "完成" else if (started) "等待扫码或确认" else "等待开始", loggedIn)
+        StudioStatus("通道已连接", if (connected) "完成" else if (loggedIn) "进行中" else "等待开始", connected)
+        if (!configured) Text("还可以先去配置云端模型。", style = MaterialTheme.typography.bodySmall)
     }
 }

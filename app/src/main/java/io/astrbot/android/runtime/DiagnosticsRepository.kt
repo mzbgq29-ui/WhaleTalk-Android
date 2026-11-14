@@ -65,11 +65,16 @@ class DiagnosticsRepository(private val context: Context) {
                 logs.put(JSONObject().put("category", category.name).put("entry", name).put("status", status).put("bytes", file.length()))
             }
             report.put("logs", logs)
+            report.put("prepareStatus", prepareStatus())
+            val errorFile = File(context.filesDir, "manager/last-preparation-error.json")
+            val errorText = DurableFiles.read(errorFile)?.let { SecretRedactor.redact(it.toString(2)).take(8000) }
+            if (errorText != null) report.put("lastPreparationError", errorText)
             val archive = File(cache, "diagnostics.zip")
             ZipOutputStream(BufferedOutputStream(FileOutputStream(archive))).use { zip ->
                 fun text(name: String, value: String) { zip.putNextEntry(ZipEntry(name)); zip.write(value.toByteArray(Charsets.UTF_8)); zip.closeEntry() }
                 text("report.json", report.toString(2))
                 text("README.txt", NOTICE)
+                if (errorText != null) text("last-preparation-error.json", errorText)
                 val buffer = ByteArray(128 * 1024)
                 entries.forEach { (name, file) ->
                     zip.putNextEntry(ZipEntry(name))
@@ -155,6 +160,35 @@ class DiagnosticsRepository(private val context: Context) {
             .put("scope", JSONObject().put("businessFilesIncluded", false).put("qqSessionFilesIncluded", false)
                 .put("deviceIdentifiersIncluded", false).put("recognizedSecretsRedacted", true).put("logSourceBytesPerFile", LOG_FILE_LIMIT)
                 .put("logSourceFilesPerCategory", 3).put("notice", NOTICE))
+    }
+
+    private fun prepareStatus(): JSONObject {
+        fun treeBytes(file: File): Long =
+            if (!file.exists()) 0L
+            else if (file.isFile) file.length()
+            else file.walkTopDown().filter { it.isFile }.map { it.length() }.sum()
+        val snow = File(context.filesDir, "manager/extensions/snowluma")
+        val trees = JSONObject()
+        listOf("runtime", "runtime.installing", "runtime.previous").forEach { name ->
+            val path = File(snow, name)
+            trees.put(name, JSONObject()
+                .put("exists", path.exists())
+                .put("bytes", treeBytes(path))
+                .put("hasMarker", File(path, ".bigfish-runtime.json").isFile))
+        }
+        val versions = File(context.filesDir, "persistent/home/.config/QQ/versions/config.json")
+        val versionFields = JSONObject()
+        DurableFiles.read(versions)?.let { document ->
+            listOf("curVersion", "currentVersion", "prevVersion", "onErrorVersions").forEach { key ->
+                if (document.has(key)) versionFields.put(key, document.get(key))
+            }
+        }
+        return JSONObject()
+            .put("snowluma", trees)
+            .put("qqVersionLock", JSONObject()
+                .put("enabled", QqHotUpdateGuard.lockEnabled(context))
+                .put("pinned", QqHotUpdateGuard.pinnedVersion(context)))
+            .put("qqHotUpdateConfig", if (versionFields.length() == 0) JSONObject.NULL else versionFields)
     }
 
     companion object {

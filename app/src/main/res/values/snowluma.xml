@@ -47,8 +47,8 @@
     <string name="snow_step_profile">登录 QQ 与启动</string>
     <string name="snow_step_astrbot">对接与运行说明</string>
     <string name="snow_qq_install_page">安装 QQ</string>
-    <string name="snow_environment_detail">先完成 App **环境初始化**，点下方按钮安装原版 Linux QQ `3.2.34-53644`。\n\n**本步只安装，暂不启动 QQ**。安装完成后返回，进入第 2 步；已经安装可直接继续。\n\n回首页**只启动 AstrBot**，保持 **SnowLuma 停止**，不要点“启动全部”。</string>
-    <string name="snow_package_detail">官方 **v2.2.1 ARM64 完整包**约 50 MiB。**复制整段**到 Ubuntu 终端执行，任一步失败即停止。看到 `Optional desktop startup profile saved.` 后进入第 3 步。</string>
+    <string name="snow_environment_detail">先完成 App **环境初始化**，点下方按钮安装原版 Linux QQ `3.2.35-54395`。\n\n**本步只安装，暂不启动 QQ**。安装完成后返回，进入第 2 步；已经安装可直接继续。\n\n回首页**只启动 AstrBot**，保持 **SnowLuma 停止**，不要点“启动全部”。</string>
+    <string name="snow_package_detail">当前镜像 **v2.4.2 ARM64 完整包**约 50 MiB。**复制整段**到 Ubuntu 终端执行，任一步失败即停止。看到 `Optional desktop startup profile saved.` 后进入第 3 步。</string>
     <string name="snow_command_scroll_hint">上下滑动代码块查看 5 项命令，复制包含完整内容</string>
     <string name="snow_package_directory">创建并进入目录</string>
     <string name="snow_package_download">下载官方完整包</string>

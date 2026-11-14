@@ -85,9 +85,9 @@ class SnowLumaRepository(private val context: Context) {
     companion object {
         const val DEFAULT_DIRECTORY = "/persistent/SnowLuma"
         const val WEB_UI_URL = "http://127.0.0.1:5099"
-        const val OFFICIAL_RELEASE = "https://github.com/SnowLuma/SnowLuma/releases/tag/v2.2.1"
-        const val ARCHIVE_URL = "https://github.com/SnowLuma/SnowLuma/releases/download/v2.2.1/SnowLuma-v2.2.1-linux-arm64.tar.gz"
-        const val ARCHIVE_SHA256 = "26727d30109a5a7cc19e95f7c7a7ca9cbf9eb17adce7c122129e96bda88a2945"
+        const val OFFICIAL_RELEASE = "https://github.com/MimoKit/SnowLuma/releases/tag/v2.4.2"
+        const val ARCHIVE_URL = "https://github.com/MimoKit/SnowLuma/releases/download/v2.4.2/SnowLuma-v2.4.2-linux-arm64.tar.gz"
+        const val ARCHIVE_SHA256 = "56c267591c82a7a1dacc913dd46473c821ff2d9209252ed093f802944321d57f"
         fun quote(value: String): String = "'" + value.replace("'", "'\"'\"'") + "'"
         fun profileCommand(directory: String): String = "guest-compat configure --library ${quote("$directory/native/snowluma-linux-arm64.so")} --symbol snowluma_linux_hook_start_dynamic --wait-module wrapper.node"
     }

@@ -54,6 +54,7 @@ data class ManagerState(
     val personas: PersonaInstallation = PersonaInstallation(),
     val environmentCheck: EnvironmentCheckReport? = null,
     val storageSpace: StorageSpaceReading = StorageSpaceReading(),
+    val progressFraction: Float? = null,
 ) {
     val busy: Boolean get() = executing || pendingRequests.isNotEmpty()
 }
@@ -174,7 +175,15 @@ class RuntimeController(private val context: Context, private val scope: Corouti
                 desktopRepository.setDesired(false)
                 desktopRepository.setQqDesired(false)
                 desktop.stop()
-                BigFishSnowLuma(context).prepare { phase -> updateState { it.copy(phase = phase) } }
+                try {
+                    kotlinx.coroutines.withTimeout(BigFishSnowLuma.PREPARE_TIMEOUT_MS) {
+                        BigFishSnowLuma(context).prepare { phase, fraction ->
+                            updateState { it.copy(phase = phase, progressFraction = fraction) }
+                        }
+                    }
+                } catch (failure: kotlinx.coroutines.TimeoutCancellationException) {
+                    error("准备 SnowLuma 运行层超时（超过 15 分钟）。请检查可用存储后重试；未完成的解压文件已保留，下次会继续。")
+                }
                 checkPortFree(LocalEndpoint(5920))
             }
             if (id == ServiceId.ASTRBOT) BundledCompanionPlugins(context).prepare { phase -> updateState { it.copy(phase = phase) } }
@@ -298,6 +307,17 @@ class RuntimeController(private val context: Context, private val scope: Corouti
                         val health = interfaceHealth.observe(connection.enabled, available, android.os.SystemClock.elapsedRealtime())
                         supervisor.observe(before.processGeneration, health,
                             qq.state, oneBot, System.currentTimeMillis())
+                        if (id == ServiceId.SNOWLUMA) {
+                            ConnectionAlerts(context).maybeNotify(before.qq, qq.state, before.oneBot, oneBot)
+                            if (before.qq != QqState.ONLINE && qq.state == QqState.ONLINE) {
+                                val hasBackup = RuntimeStore.state.value.backups.isNotEmpty()
+                                val pending = preferences.getBoolean("backup_reminder_pending", true)
+                                if (pending && !hasBackup) {
+                                    preferences.edit().putBoolean("backup_reminder_pending", false).apply()
+                                    updateState { it.copy(notice = "登录成功。建议在「备份与恢复」中保存一份快照。") }
+                                }
+                            }
+                        }
                         completedAt = android.os.SystemClock.elapsedRealtime()
                         completedGeneration = before.processGeneration
                     }
@@ -316,7 +336,7 @@ class RuntimeController(private val context: Context, private val scope: Corouti
         val readOnlyCheck = action in setOf("export-diagnostics", "check-environment")
         val prepareDesktop = action == "desktop-install" || action in setOf("initialize", "desktop-start", "desktop-open", "desktop-qq-start", "desktop-qq-open", "desktop-qq-install", "desktop-lan-save") &&
             !desktopRepository.configuration().installed
-        updateState { it.copy(executing = true, error = if (readOnlyCheck) diagnosticSnapshot.error else null, notice = null) }
+        updateState { it.copy(executing = true, error = if (readOnlyCheck) diagnosticSnapshot.error else null, notice = null, progressFraction = null) }
         if (action.startsWith("ssh-")) SshStore.state.update { it.copy(busy = true, error = null) }
         if (action.startsWith("cpolar-")) CpolarStore.state.update { it.copy(busy = true, error = null) }
         if (action.startsWith("harness-")) HarnessStore.state.update { it.copy(busy = true,error = null,downloaded = 0,total = 0, installation = null) }
@@ -681,7 +701,7 @@ class RuntimeController(private val context: Context, private val scope: Corouti
                     if (!backups.hasPendingRestore && !updates.hasPendingUpdate && !images.hasPendingUpdate) retainLogs()
                     RuntimeStore.refreshInstallation(context)
                 }
-                updateState { it.copy(executing = false, phase = if (readOnlyCheck) diagnosticSnapshot.phase else it.phase) }
+                updateState { it.copy(executing = false, phase = if (readOnlyCheck) diagnosticSnapshot.phase else it.phase, progressFraction = if (readOnlyCheck) diagnosticSnapshot.progressFraction else null) }
                 event(AppText.get(R.string.ui_finished_072d2, action))
             }
         }
@@ -1070,12 +1090,15 @@ class RuntimeController(private val context: Context, private val scope: Corouti
     }
 
     private suspend fun waitForInterface(id: ServiceId, maintenanceCheck: Boolean = false) {
+        val started = android.os.SystemClock.elapsedRealtime()
         withTimeout(if (maintenanceCheck) 120_000 else 300_000) {
             while (supervisors.getValue(id).state.value.health != HealthState.AVAILABLE ||
                 maintenanceCheck && id == ServiceId.ASTRBOT && astrbotStartup.migration() != "passed") {
                 checkLocalized(supervisors.getValue(id).state.value.desiredRunning) { AppText.get(R.string.ui_service_startup_canceled) }
                 if (maintenanceCheck) checkLocalized(supervisors.getValue(id).state.value.process != ProcessState.CRASHED) { AppText.get(R.string.ui_the_new_program_exited_unexpectedly_after_startup_rolling_back) }
                 if (maintenanceCheck && id == ServiceId.ASTRBOT) checkMigration()
+                val elapsed = (android.os.SystemClock.elapsedRealtime() - started) / 1000
+                updateState { it.copy(phase = "正在等待 ${id.label} 后台就绪…已用时 ${elapsed} 秒", progressFraction = null) }
                 delay(500)
             }
         }

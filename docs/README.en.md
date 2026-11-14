@@ -139,9 +139,9 @@ Install cpolar separately in **Settings → Runtime extensions**; its client is 
 
 ## Optional setup: SnowLuma
 
-[SnowLuma](https://github.com/SnowLuma/SnowLuma) is another QQ interoperability project providing OneBot v11 interfaces. The [NapCat README](https://github.com/NapNeko/NapCatQQ#new-framework-) recommends it as an alternative to **NapCat Gui**. See our [manual phone setup and AstrBot connection guide (Chinese)](SnowLuma手动部署.md) for this optional approach.
+[SnowLuma](https://github.com/MimoKit/SnowLuma) is another QQ interoperability project providing OneBot v11 interfaces. The [NapCat README](https://github.com/NapNeko/NapCatQQ#new-framework-) recommends it as an alternative to **NapCat Gui**. See our [manual phone setup and AstrBot connection guide (Chinese)](SnowLuma手动部署.md) for this optional approach.
 
-The guide uses the app's general Ubuntu, desktop, original QQ and terminal features. Users obtain the official full package and set it up themselves, keeping NapCat stopped while using this approach. The app's default setup remains NapCat. SnowLuma uses a **source-available non-commercial license**, with separate proprietary terms for native components; read its [LICENSE](https://github.com/SnowLuma/SnowLuma/blob/v2.2.1/LICENSE) and [EULA](https://github.com/SnowLuma/SnowLuma/blob/v2.2.1/EULA.md) first. This repository does not supply its programs; users copy and execute the example commands themselves. Dedicated controls remain subject to license review. The guide does not imply upstream endorsement or additional permission.
+The guide uses the app's general Ubuntu, desktop, original QQ and terminal features. Users obtain the official full package and set it up themselves, keeping NapCat stopped while using this approach. The app's default setup remains NapCat. SnowLuma uses a **source-available non-commercial license**, with separate proprietary terms for native components; read its [LICENSE](https://github.com/MimoKit/SnowLuma/blob/v2.4.2/LICENSE) and [EULA](https://github.com/MimoKit/SnowLuma/blob/v2.4.2/EULA.md) first. This repository does not supply its programs; users copy and execute the example commands themselves. Dedicated controls remain subject to license review. The guide does not imply upstream endorsement or additional permission.
 
 ## Building from source
 
