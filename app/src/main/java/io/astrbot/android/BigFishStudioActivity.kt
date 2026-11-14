@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -80,6 +81,9 @@ open class BigFishStudioActivity : ComponentActivity() {
                 }
                 if (route != null) vm.go(route)
             }
+        }
+        LaunchedEffect(Unit) {
+            withContext(Dispatchers.IO) { runCatching { AppUpdateChecker(context).checkIfDue() } }
         }
         LaunchedEffect(state.completedOperation) {
             if (state.completedOperation != null && state.completedOperation == vm.configRequest && !state.busy && state.error == null) {
@@ -178,6 +182,7 @@ open class BigFishStudioActivity : ComponentActivity() {
             Text(if (state.services.values.any { it.desiredRunning }) "暂停陪伴" else "让鲸鱼上线")
         }
     }
+    StudioHomeUpdateBanner()
     if (!state.componentsReady || !vm.configured) StudioCard {
         StudioTile("完成初次设置", "准备环境、连接模型，再登录 QQ。", { vm.go(StudioPage.SETUP) })
     }
@@ -324,7 +329,7 @@ open class BigFishStudioActivity : ComponentActivity() {
         }
     }
     StudioCard("QQ 登录", "SnowLuma · QQ $qqVersion · ARM64") {
-        Text(if (service.qq == QqState.ONLINE) "QQ 已登录。登录画面按需打开，收起后停止传输画面，QQ 保持在线。" else "服务就绪后自动打开大屏登录。扫码后在手机 QQ 中确认；安全验证也在登录画面处理。")
+        Text(if (service.qq == QqState.ONLINE) "QQ 已登录。登录画面按需打开，收起后停止传输画面，QQ 保持在线。" else "服务就绪后自动打开大屏登录。若画面里出现二维码，会放大显示在上方，便于扫码。SnowLuma 2.4.2 没有稳定的二维码或一键登录接口，识别失败时请直接使用登录画面。安全验证也在画面中处理。")
         if (!service.canOpenWebUi) {
             LiquidButton(onClick = { command("start", ServiceId.SNOWLUMA) }, Modifier.fillMaxWidth(), enabled = state.componentsReady && !state.busy) { Text("启动 QQ 服务") }
         } else {
@@ -487,3 +492,13 @@ private fun channelLabel(state: ManagerState, qq: ServiceStatus): String = when 
         if (!configured) Text("还可以先去配置云端模型。", style = MaterialTheme.typography.bodySmall)
     }
 }
+
+@Composable private fun StudioHomeUpdateBanner() {
+    val update by AppUpdateStore.state.collectAsStateWithLifecycle()
+    val candidate = update?.candidate ?: return
+    val uriHandler = LocalUriHandler.current
+    StudioCard("发现新版本 ${candidate.versionName}", "可到 GitHub Releases 下载安装包。覆盖安装即可从 1.4.0 升级，不会自动下载或安装。") {
+        LiquidButton(onClick = { uriHandler.openUri(candidate.pageUrl) }, Modifier.fillMaxWidth()) { Text("打开下载页") }
+    }
+}
+

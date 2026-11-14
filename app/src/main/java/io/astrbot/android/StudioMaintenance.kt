@@ -54,6 +54,7 @@ import java.util.zip.ZipInputStream
                 StudioStatus("作者", "mzbgq"); StudioStatus("版本", BuildConfig.VERSION_NAME)
                 Text("给手机上的 QQ 伙伴，一个自己的小世界。", style = MaterialTheme.typography.bodyMedium)
             }
+            StudioAppUpdateCard()
             if (BuildConfig.APPLICATION_ID.endsWith(".qqfix")) StudioCard("与旧版并存") {
                 Text("这是独立安装的修复版，数据与旧版分别保存。启动本版服务前，请先在旧版停止服务，避免端口占用。")
                 StudioTile("迁移已有设置", "先在旧版导出备份，再到本版的备份与恢复中导入", { vm.go(StudioPage.BACKUP) })
@@ -233,11 +234,15 @@ import java.util.zip.ZipInputStream
     val preferences = remember { context.getSharedPreferences("bigfish-ui", 0) }
     var theme by remember { mutableStateOf(preferences.getString("theme", "system")) }
     var motion by remember { mutableStateOf(preferences.getBoolean("ocean_motion", false)) }
-    StudioCard("光与颜色", "玻璃只折射装饰背景，文字和弹窗使用独立清晰层。") {
+    var dynamicColor by remember { mutableStateOf(preferences.getBoolean("dynamic_color", true)) }
+    StudioCard("光与颜色", "玻璃只折射装饰背景，文字和弹窗使用独立清晰层。鲸鱼蓝绿作为主色保留。") {
         listOf("system" to "跟随系统", "light" to "浅色海面", "dark" to "深色海底").forEach { (id, label) ->
             LiquidChoice(theme == id, { theme = id; preferences.edit().putString("theme", id).apply() }, { Text(label) }, Modifier.fillMaxWidth())
         }
         Text("Android 13 及以上显示边缘折射；Android 12 使用模糊，较早版本使用稳定的玻璃配色。", style = MaterialTheme.typography.bodySmall)
+        if (android.os.Build.VERSION.SDK_INT >= 31) StudioSwitch("跟随壁纸颜色", "仅用于背景和表面。按钮和强调色仍使用鲸语的蓝与青绿，保持品牌识别。", dynamicColor) { value ->
+            dynamicColor = value; preferences.edit().putBoolean("dynamic_color", value).apply()
+        }
         StudioSwitch("动态海洋背景", "默认关闭以减少持续重绘和耗电，静态背景仍保留玻璃质感。", motion) { value ->
             motion = value; preferences.edit().putBoolean("ocean_motion", value).apply()
         }
@@ -372,6 +377,31 @@ import java.util.zip.ZipInputStream
             runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(DesktopRepository.WEB_UI_URL))) }.onFailure { vm.error = "未找到浏览器" }
         }) { Text("在浏览器打开桌面") }
         desktop.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    }
+}
+
+@Composable private fun StudioAppUpdateCard() {
+    val context = LocalContext.current
+    val update by AppUpdateStore.state.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var checking by remember { mutableStateOf(false) }
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    StudioCard("检查更新", "对照本仓库的 GitHub Releases。不会自动下载或安装。") {
+        Text("当前版本 ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall)
+        update?.message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        LiquidButton(onClick = {
+            if (checking) return@LiquidButton
+            checking = true
+            scope.launch {
+                try { withContext(Dispatchers.IO) { AppUpdateChecker(context).check() } }
+                finally { checking = false }
+            }
+        }, Modifier.fillMaxWidth(), enabled = !checking) { Text(if (checking) "正在检查…" else "检查更新") }
+        val candidate = update?.candidate
+        if (candidate != null) {
+            Text("发现 ${candidate.versionName}" + (candidate.apkBytes?.let { "，安装包约 ${it / 1024 / 1024} MiB" } ?: ""), style = MaterialTheme.typography.bodySmall)
+            LiquidOutlinedButton(onClick = { uriHandler.openUri(candidate.pageUrl) }, Modifier.fillMaxWidth()) { Text("打开下载页") }
+        }
     }
 }
 
