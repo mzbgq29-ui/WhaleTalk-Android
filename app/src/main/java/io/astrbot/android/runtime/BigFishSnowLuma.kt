@@ -63,6 +63,7 @@ class BigFishSnowLuma(private val context: Context) {
     }
 
     private suspend fun prepareInner(report: (String, Float?) -> Unit) {
+        val coroutine = currentCoroutineContext()
         check(runtime.abi == "arm64-v8a") { "此 SnowLuma 私用版本需要 ARM64 手机" }
         val desktop = DesktopRepository(context)
         if (!desktop.configuration().installed) desktop.install { report(it, 0.02f) }
@@ -96,7 +97,7 @@ class BigFishSnowLuma(private val context: Context) {
             context.assets.open("$asset/runtime.tar.bin").use { input ->
                 val buffer = ByteArray(131072)
                 while (true) {
-                    currentCoroutineContext().ensureActive()
+                    coroutine.ensureActive()
                     val n = input.read(buffer); if (n < 0) break
                     digest.update(buffer, 0, n); read += n
                     if (packedBytes > 0 && read - lastReport >= 2L * 1024 * 1024) {
@@ -109,7 +110,7 @@ class BigFishSnowLuma(private val context: Context) {
             check(digest.digest().joinToString("") { "%02x".format(it) } == manifest.getString("sha256")) { "SnowLuma 内置资源校验失败" }
             val staging = File(root, "runtime.installing")
             if (!staging.isDirectory) {
-                DurableFiles.delete(staging) { currentCoroutineContext().ensureActive() }
+                DurableFiles.delete(staging) { coroutine.ensureActive() }
                 check(staging.mkdirs())
             }
             val entries = manifest.getJSONObject("files")
@@ -119,7 +120,7 @@ class BigFishSnowLuma(private val context: Context) {
             try {
                 context.assets.open("$asset/runtime.tar.bin").use { raw -> GZIPInputStream(raw).use { gzip -> TarArchiveInputStream(gzip).use { tar ->
                     while (true) {
-                        currentCoroutineContext().ensureActive()
+                        coroutine.ensureActive()
                         val entry = tar.nextTarEntry ?: break
                         val name = entry.name
                         check(entry.isFile && !entry.isSymbolicLink && !entry.isLink && name in expected && seen.add(name)) { "SnowLuma 资源目录不符合预期" }
@@ -133,7 +134,7 @@ class BigFishSnowLuma(private val context: Context) {
                             val buffer = ByteArray(65536)
                             var skipped = 0L
                             while (skipped < entry.size) {
-                                currentCoroutineContext().ensureActive()
+                                coroutine.ensureActive()
                                 val n = tar.read(buffer, 0, minOf(buffer.size.toLong(), entry.size - skipped).toInt())
                                 if (n < 0) break
                                 skipped += n
@@ -145,7 +146,7 @@ class BigFishSnowLuma(private val context: Context) {
                             out.outputStream().use { stream ->
                                 val buffer = ByteArray(65536); var written = 0L
                                 while (true) {
-                                    currentCoroutineContext().ensureActive()
+                                    coroutine.ensureActive()
                                     val n = tar.read(buffer); if (n < 0) break
                                     written += n; total += n
                                     check(written <= entry.size && total <= unpacked)
@@ -164,10 +165,10 @@ class BigFishSnowLuma(private val context: Context) {
                 DurableFiles.write(File(staging, ".bigfish-runtime.json"), manifest)
                 report("正在切换运行层目录", 0.92f)
                 val previous = File(root, "runtime.previous")
-                DurableFiles.delete(previous) { currentCoroutineContext().ensureActive() }
+                DurableFiles.delete(previous) { coroutine.ensureActive() }
                 if (target.exists()) DurableFiles.move(target, previous)
                 DurableFiles.move(staging, target)
-                DurableFiles.delete(previous) { currentCoroutineContext().ensureActive() }
+                DurableFiles.delete(previous) { coroutine.ensureActive() }
             } catch (failure: CancellationException) {
                 throw failure
             }
