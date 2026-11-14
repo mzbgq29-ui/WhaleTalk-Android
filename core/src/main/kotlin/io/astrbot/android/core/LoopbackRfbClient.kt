@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 
-enum class RfbStatus { CONNECTING, CONNECTED, RETRYING, UNAVAILABLE, AUTH_REJECTED }
+enum class RfbStatus { CONNECTING, CONNECTED, RETRYING, UNAVAILABLE, AUTH_REJECTED, NO_FRAME }
 
 /** Restricted adapter for our password-protected loopback x11vnc server.
  * RFB 3.3/3.7/3.8, VNC authentication, RAW rectangles and DesktopSize only.
@@ -27,6 +27,7 @@ class LoopbackRfbClient(
     private val onFrame: (IntArray, Int, Int) -> Unit,
     private val port: Int = 5920,
 ) {
+    companion object { const val FIRST_FRAME_TIMEOUT_MS = 60_000L }
     private val started = AtomicBoolean(false)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val outputLock = Any()
@@ -147,8 +148,13 @@ class LoopbackRfbClient(
         }
         status(RfbStatus.CONNECTED)
         request(stream, false)
+        val frameDeadline = System.currentTimeMillis() + FIRST_FRAME_TIMEOUT_MS
         while (!closed) {
             val type = try { input.readUnsignedByte() } catch (_: SocketTimeoutException) {
+                if (!owner.ready && System.currentTimeMillis() >= frameDeadline) {
+                    status(RfbStatus.NO_FRAME)
+                    break
+                }
                 request(stream, true); continue
             }
             when (type) {

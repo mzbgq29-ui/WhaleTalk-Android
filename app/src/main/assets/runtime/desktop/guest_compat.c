@@ -159,10 +159,18 @@ static void maybe_init(void) {
     long elapsed=(now.tv_sec-started.tv_sec)*1000+(now.tv_nsec-started.tv_nsec)/1000000;
     const char *delay=getenv("ASTRBOT_COMPAT_INIT_DELAY_MS");if(elapsed<(delay?strtol(delay,NULL,10):5000))return;
     const char *module=getenv("ASTRBOT_COMPAT_WAIT_MODULE");
+    const char *limit=getenv("ASTRBOT_COMPAT_INIT_TIMEOUT_MS");
+    long max_wait=limit&&*limit?strtol(limit,NULL,10):180000;
+    if(max_wait<1000)max_wait=180000;
     if(module && *module) {
         FILE *maps=fopen("/proc/self/maps","r");bool present=false;char line[4096];
         if(maps){while(fgets(line,sizeof(line),maps))if(strstr(line,module)){present=true;break;}fclose(maps);}
-        if(!present)return;
+        if(!present){
+            if(elapsed<max_wait)return;
+            attempted=true;
+            fprintf(stderr,"[guest-compat] timed out waiting for %s after %ld ms\n",module,elapsed);
+            return;
+        }
     }
     attempted=true;
     const char *library=getenv("ASTRBOT_COMPAT_INIT_LIBRARY"),*symbol=getenv("ASTRBOT_COMPAT_INIT_SYMBOL");

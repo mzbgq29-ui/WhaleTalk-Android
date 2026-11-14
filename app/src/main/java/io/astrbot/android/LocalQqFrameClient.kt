@@ -32,6 +32,7 @@ internal class LocalQqFrameClient(password: () -> String) {
             RfbStatus.RETRYING -> "正在重新连接本机画面…"
             RfbStatus.UNAVAILABLE -> "本机画面未能连接，请重新启动 QQ 服务或刷新"
             RfbStatus.AUTH_REJECTED -> "本机画面认证失败，请重新启动 QQ 服务"
+            RfbStatus.NO_FRAME -> "已连上桌面，但 60 秒内没有收到画面，可能 QQ 窗口尚未出现。请重新启动 QQ 服务或刷新"
         }))
     }, onFrame = { pixels, width, height ->
         if (!closed) publish(QqFrameState(Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888), "已显示本机 QQ 桌面，轻点画面操作。"))

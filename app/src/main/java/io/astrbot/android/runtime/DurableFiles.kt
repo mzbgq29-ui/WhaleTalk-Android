@@ -40,10 +40,11 @@ internal object DurableFiles {
         sync(source.parentFile!!)
         if (source.parentFile != destination.parentFile) sync(destination.parentFile!!)
     }
-    fun delete(directory: File, writableGuestDirectories: Boolean = false) {
+    fun delete(directory: File, writableGuestDirectories: Boolean = false, ensureActive: () -> Unit = {}) {
         if (!Files.exists(directory.toPath(), LinkOption.NOFOLLOW_LINKS)) return
         Files.walkFileTree(directory.toPath(), object : SimpleFileVisitor<Path>() {
             override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
+                ensureActive()
                 if (writableGuestDirectories) Os.chmod(dir.toString(), Os.lstat(dir.toString()).st_mode or 448)
                 return FileVisitResult.CONTINUE
             }
@@ -57,7 +58,7 @@ internal object DurableFiles {
                 Files.walkFileTree(file, this)
                 return FileVisitResult.CONTINUE
             }
-            override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult { Files.delete(file); return FileVisitResult.CONTINUE }
+            override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult { ensureActive(); Files.delete(file); return FileVisitResult.CONTINUE }
             override fun postVisitDirectory(dir: Path, exc: java.io.IOException?): FileVisitResult {
                 if (exc != null) throw exc
                 Files.delete(dir); return FileVisitResult.CONTINUE
