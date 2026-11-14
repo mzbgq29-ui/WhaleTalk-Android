@@ -204,6 +204,36 @@ jobs:
           print("signing and SDK paths written")
           PY
 
+      - name: Refresh third-party notice artifact index
+        run: |
+          set -euo pipefail
+          bash gradlew :app:collectReleaseDependencyMetadata --no-daemon --console=plain \
+            -PbundledRuntime=true \
+            -PreleaseSigningProperties="$PWD/.local/signing/release.properties"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          tsv = Path("app/build/distribution/android-dependencies/artifacts.tsv")
+          current = []
+          for line in tsv.read_text().splitlines():
+              group, name, version, ext, sha, *rest = line.split("\t")
+              current.append(f"{group}:{name}:{version}:{ext}:{sha}")
+          current_set = set(current)
+          manifest_path = Path(".local/inputs/assets/third-party/manifest.json")
+          index = json.loads(manifest_path.read_text())
+          previous = set(index.get("androidArtifacts") or [])
+          added = sorted(current_set - previous)
+          removed = sorted(previous - current_set)
+          print("androidArtifacts added", len(added), "removed", len(removed))
+          for item in added[:30]:
+              print(" +", item)
+          for item in removed[:30]:
+              print(" -", item)
+          index["androidArtifacts"] = sorted(current_set)
+          manifest_path.write_text(json.dumps(index, indent=2) + "\n", encoding="utf8")
+          print("updated", manifest_path)
+          PY
+
       - name: Build signed bundled release APK
         run: |
           set -euo pipefail
