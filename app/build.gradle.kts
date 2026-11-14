@@ -28,9 +28,9 @@ val distributionAssets = (providers.gradleProperty("distributionAssetsDir").orNu
     ?: file("../runtime/distribution-assets")
 val bootstrapAssets = (providers.gradleProperty("bootstrapAssetsDir").orNull ?: localInputs.getProperty("bootstrapAssetsDir"))?.let { file(it) }
 val nativeLibs = (providers.gradleProperty("nativeLibsDir").orNull ?: localInputs.getProperty("nativeLibsDir"))?.let { file(it) }
-val channelBase = "https://raw.githubusercontent.com/JunWan666/astrbot-for-android/updates/stable"
-val updateCatalogUrl = providers.gradleProperty("updateCatalogUrl").getOrElse("$channelBase/astrbot.json")
-val managerCatalogUrl = providers.gradleProperty("managerCatalogUrl").getOrElse("$channelBase/manager.json")
+// Missing or empty properties must not fall back to the upstream catalog.
+val updateCatalogUrl = providers.gradleProperty("updateCatalogUrl").orElse("").get()
+val managerCatalogUrl = providers.gradleProperty("managerCatalogUrl").orElse("").get()
 require(managerCatalogUrl.isEmpty() || URI(managerCatalogUrl).let {
     it.scheme == "https" && !it.host.isNullOrBlank() && it.userInfo == null && it.fragment == null
 }) { "managerCatalogUrl must be an HTTPS URL without credentials or a fragment" }
