@@ -58,11 +58,13 @@ import kotlin.math.roundToInt
     var saving by remember { mutableStateOf(false) }
     var savedMessage by remember { mutableStateOf<String?>(null) }
     var pendingSnapshot by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
-    var qrText by remember { mutableStateOf<String?>(null) }
     var qrImage by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var qrPayload by remember { mutableStateOf<String?>(null) }
+    var qrHash by remember { mutableLongStateOf(0L) }
     var qrFirstSeen by remember { mutableLongStateOf(0L) }
     var qrLastSeen by remember { mutableLongStateOf(0L) }
     var qrNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var qrSearchStarted by remember { mutableLongStateOf(0L) }
     var accounts by remember { mutableStateOf(emptyList<io.astrbot.android.runtime.QqKnownAccount>()) }
     val saveDocument = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
         val image = pendingSnapshot; pendingSnapshot = null
@@ -92,18 +94,25 @@ import kotlin.math.roundToInt
         accounts = withContext(Dispatchers.IO) { QqKnownAccounts.list(context) }
     }
     LaunchedEffect(client) {
+        qrSearchStarted = 0L
         while (true) {
             val frame = client.state.value.bitmap
             if (frame != null) {
-                val found = withContext(Dispatchers.Default) { QqLoginQr.decode(frame) }
+                val width = frame.width
+                val height = frame.height
+                val pixels = IntArray(width * height)
+                frame.getPixels(pixels, 0, width, 0, 0, width, height)
+                val inspection = withContext(Dispatchers.Default) { QqLoginQr.inspect(width, height, pixels) }
                 val now = System.currentTimeMillis()
                 qrNow = now
-                if (found != null && QqLoginQr.isLikelyLoginPayload(found)) {
-                    if (found != qrText) {
-                        qrText = found
+                if (qrSearchStarted == 0L) qrSearchStarted = now
+                if (inspection.located) {
+                    if (inspection.contentHash != qrHash || qrImage == null) {
+                        qrHash = inspection.contentHash
+                        qrPayload = inspection.payload
                         qrFirstSeen = now
                         val previous = qrImage
-                        qrImage = withContext(Dispatchers.Default) { QqLoginQr.encode(found) }
+                        qrImage = withContext(Dispatchers.Default) { QqLoginQr.displayBitmap(inspection) }
                         previous?.recycle()
                     }
                     qrLastSeen = now
@@ -112,8 +121,7 @@ import kotlin.math.roundToInt
             kotlinx.coroutines.delay(600)
         }
     }
-    LaunchedEffect(qrText) {
-        if (qrText == null) return@LaunchedEffect
+    LaunchedEffect(qrImage != null) {
         while (true) {
             qrNow = System.currentTimeMillis()
             kotlinx.coroutines.delay(1000)
@@ -149,18 +157,23 @@ import kotlin.math.roundToInt
                 Text(account.label, style = MaterialTheme.typography.bodyMedium)
             }
         }
+        val freshness = QqLoginQr.freshness(qrNow, qrFirstSeen, qrLastSeen)
+        val qrStatus = when {
+            state.bitmap == null -> null
+            qrImage != null && freshness == QrFreshness.STALE -> "二维码可能已过期，请点刷新或查看下方画面"
+            qrImage != null && freshness == QrFreshness.LOST -> "画面里暂时看不到二维码，已显示上次内容；可刷新或使用下方登录画面"
+            qrImage != null && qrPayload != null -> "用手机 QQ 扫描上方放大的二维码。"
+            qrImage != null -> "已放大登录二维码，可直接扫描。若扫描失败，请使用下方完整画面。"
+            qrSearchStarted > 0L && qrNow - qrSearchStarted >= QqLoginQr.SEARCHING_FOR_MS -> "未识别到，请直接扫描下方画面"
+            else -> "正在识别二维码…"
+        }
+        if (qrStatus != null) Text(qrStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         qrImage?.let { image ->
-            val freshness = QqLoginQr.freshness(qrNow, qrFirstSeen, qrLastSeen)
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("登录二维码", style = MaterialTheme.typography.titleSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
                 Image(image.asImageBitmap(), "QQ 登录二维码",
                     Modifier.size(240.dp).clip(RoundedCornerShape(16.dp)).background(androidx.compose.ui.graphics.Color.White).padding(12.dp),
                     contentScale = ContentScale.Fit)
-                Text(when (freshness) {
-                    QrFreshness.STALE -> "二维码可能已过期，请点刷新或查看下方画面"
-                    QrFreshness.LOST -> "画面里暂时看不到二维码，已显示上次内容；可刷新或使用下方登录画面"
-                    else -> "用手机 QQ 扫描上方二维码。识别失败时请直接使用下方登录画面。"
-                }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             }
         }
         Text("下方是完整的 QQ 登录画面，验证码、滑块和快速登录都在这里完成。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
