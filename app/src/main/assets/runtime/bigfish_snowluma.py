@@ -71,6 +71,26 @@ def prepare_ipc_directory():
         probe.unlink(missing_ok=True)
     return runtime
 
+
+def isolate_hot_update(home, pinned, enabled):
+    config = pathlib.Path(home)/'.config'/'QQ'/'versions'/'config.json'
+    if not enabled or not config.is_file():
+        return
+    data = json.loads(config.read_text())
+    current = str(data.get('curVersion') or data.get('currentVersion') or '')
+    if not current or current == pinned:
+        return
+    stamp = str(int(time.time()))
+    backup = config.with_name('config.json.whaletalk-backup-' + stamp)
+    shutil.copy2(config, backup)
+    errors = data.get('onErrorVersions') or []
+    if current not in errors:
+        errors.append(current)
+    data['onErrorVersions'] = errors
+    data['curVersion'] = pinned
+    atomic(config, data)
+    print('WhaleTalk: isolated QQ hot-update '+current+' -> '+pinned+'; account data was not deleted', flush=True)
+
 def main():
     STATE.mkdir(parents=True,exist_ok=True)
     qq=managed_qq()
@@ -99,7 +119,10 @@ def main():
     launch([str(DESKTOP/'guest-compat'),str(RUNTIME/'node'),str(RUNTIME/'index.mjs')],env=snow_env,cwd=STATE)
     home=STATE.parent/'home'
     for p in (home,home/'.config',home/'.cache',home/'.local/share'): p.mkdir(parents=True,exist_ok=True)
-    qq_env=dict(env,HOME=str(home),XDG_CONFIG_HOME=str(home/'.config'),XDG_CACHE_HOME=str(home/'.cache'),XDG_DATA_HOME=str(home/'.local/share'),XDG_RUNTIME_DIR=str(runtime),ASTRBOT_COMPAT_PROFILE=str(profile),ASTRBOT_COMPAT_SELF_MEMORY='1')
+    lock_path=STATE/'qq-version-lock.json'
+    lock=json.loads(lock_path.read_text()) if lock_path.is_file() else {}
+    isolate_hot_update(home, json.loads((DESKTOP/'sources.json').read_text())['qq']['version'], lock.get('enabled', True))
+    qq_env=dict(env,HOME=str(home),XDG_CONFIG_HOME=str(home/'.config'),XDG_CACHE_HOME=str(home/'.cache'),XDG_DATA_HOME=str(home/'.local/share'),XDG_RUNTIME_DIR=str(runtime),ASTRBOT_COMPAT_PROFILE=str(profile),ASTRBOT_COMPAT_SELF_MEMORY='1',ASTRBOT_COMPAT_INIT_TIMEOUT_MS='180000')
     launch(['/usr/bin/dbus-run-session','--',str(DESKTOP/'guest-compat'),'--profile',str(qq/'qq'),'--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--in-process-gpu','--disable-gpu-compositing','--disable-features=Vulkan'],env=qq_env,cwd=qq)
     print('WhaleTalk: SnowLuma ARM64 and bundled QQ '+json.loads((qq/'resources/app/package.json').read_text())['version']+' login desktop started',flush=True)
     while not stopping:
