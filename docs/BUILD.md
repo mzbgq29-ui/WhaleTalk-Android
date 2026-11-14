@@ -31,3 +31,9 @@ python3 tools/bigfish/run_gradle.py :app:assembleBundledRelease -PbundledRuntime
 正式签名配置由 `app/build.gradle.kts` 从本机 `.local/signing/release.properties` 读取。仓库不包含原版本签名私钥。不同签名的 APK 不能覆盖同包名的已安装版本；请使用你自己的密钥并妥善处理备份与迁移，不要上传密钥或密码。未配置签名时，release 产物可能需要另行签名。
 
 可运行 `tools/bigfish/tests/` 下与变更相关的专项检查；涉及真实 QQ 的验证应在自己的设备和账号上完成。有关第三方资源许可，见 [THIRD_PARTY.md](../THIRD_PARTY.md)。
+
+## GitHub 自动发布
+
+推送 `v*` 标签（例如 `v1.5.0`）后，[Release APK](../.github/workflows/release.yml) 工作流会构建完整 ARM64 正式包并发布到 GitHub Releases。运行资源从上一份完整安装包中按校验和提取，不把专有二进制放进 Git。正式签名密钥保存在仓库的 Actions Secrets 中，不会进入源码。
+
+若新版本更换了签名证书，已安装的旧包不能直接覆盖升级，需要先备份再卸载后安装。
