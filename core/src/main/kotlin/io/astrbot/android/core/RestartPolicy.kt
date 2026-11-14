@@ -8,26 +8,33 @@ sealed interface RestartDecision {
 
 /** Uses a monotonic clock supplied by the caller, independent of wall-clock changes. */
 class RestartPolicy(
-    private val limit: Int = 3,
-    private val windowMillis: Long = 300_000,
-    private val initialDelayMillis: Long = 2_000,
-    private val maximumDelayMillis: Long = 30_000,
+    private val delaysMillis: List<Long> = DEFAULT_DELAYS,
+    private val windowMillis: Long = DEFAULT_WINDOW_MS,
 ) {
     private val attempts = ArrayDeque<Long>()
     init {
-        require(limit in 1..30 && windowMillis > 0)
-        require(initialDelayMillis > 0 && maximumDelayMillis >= initialDelayMillis)
+        require(delaysMillis.isNotEmpty() && delaysMillis.size <= 30)
+        require(delaysMillis.all { it > 0 })
+        require(windowMillis > 0)
     }
+
+    val attemptCount: Int
+        @Synchronized get() = attempts.size
 
     @Synchronized
     fun onUnexpectedExit(nowMillis: Long, desiredRunning: Boolean, maintenance: MaintenanceState): RestartDecision {
         if (!desiredRunning || maintenance != MaintenanceState.IDLE) return RestartDecision.Suppressed
         while (attempts.isNotEmpty() && nowMillis - attempts.first() >= windowMillis) attempts.removeFirst()
-        if (attempts.size >= limit) return RestartDecision.Exhausted
-        val delay = (initialDelayMillis * (1L shl attempts.size)).coerceAtMost(maximumDelayMillis)
+        if (attempts.size >= delaysMillis.size) return RestartDecision.Exhausted
+        val delay = delaysMillis[attempts.size]
         attempts.addLast(nowMillis)
         return RestartDecision.Retry(delay)
     }
 
     @Synchronized fun reset() = attempts.clear()
+
+    companion object {
+        val DEFAULT_DELAYS = listOf(5_000L, 15_000L, 60_000L)
+        const val DEFAULT_WINDOW_MS = 15 * 60 * 1000L
+    }
 }

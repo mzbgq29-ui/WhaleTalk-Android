@@ -15,6 +15,7 @@ class ProcessSupervisor(
     private val onLog: (String) -> Unit,
     private val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 },
     private val restartPolicy: RestartPolicy = RestartPolicy(),
+    private val autoRestart: () -> Boolean = { true },
     private val expectedRestart: (Int) -> Boolean = { false },
     initialHistory: ServiceHistory = ServiceHistory(),
     private val wallClockMillis: () -> Long = System::currentTimeMillis,
@@ -158,6 +159,10 @@ class ProcessSupervisor(
             checkedAtMillis = null, detail = blocked ?: "进程退出，代码 ${event.exitCode}", history = history.history)
         if (blocked != null) {
             onLog("${id.label} $blocked")
+            return
+        }
+        if (!autoRestart()) {
+            onLog("${id.label} 已关闭自动重连，保持停止")
             return
         }
         when (val decision = restartPolicy.onUnexpectedExit(monotonicMillis(), true, maintenance)) {

@@ -28,8 +28,30 @@ class ConnectionAlerts(private val context: Context) {
             notify("QQ 已掉线", "鲸语检测到 QQ 账号已离线，可打开应用查看登录画面。")
         }
         if (previousOneBot == OneBotState.CONNECTED && nextOneBot != OneBotState.CONNECTED && nextOneBot != OneBotState.UNKNOWN) {
-            notify("消息通道已断开", "鲸语与 QQ 的消息通道已断开，可在应用中查看连接状态或重新启动服务。")
+            notify("消息通道已断开", "鲸语与 QQ 的消息通道已断开，将按设置尝试自动重连。")
         }
+        if (previousOneBot != OneBotState.CONNECTED && nextOneBot == OneBotState.CONNECTED &&
+            previousOneBot != OneBotState.UNKNOWN) {
+            notify("消息通道已恢复", "鲸语已重新连上 QQ 消息通道。")
+        }
+        if (previousQq != QqState.ONLINE && nextQq == QqState.ONLINE && previousQq == QqState.OFFLINE) {
+            notify("QQ 已重新上线", "鲸语检测到 QQ 账号已恢复在线。")
+        }
+    }
+
+    fun notifyProcessDropout(label: String) {
+        if (!enabled()) return
+        notify("$label 已退出", "鲸语检测到 $label 进程已退出，将按设置尝试自动重连。")
+    }
+
+    fun notifyProcessRecovered(label: String) {
+        if (!enabled()) return
+        notify("$label 已恢复", "鲸语已重新拉起 $label。")
+    }
+
+    fun notifyGiveUp(label: String) {
+        if (!enabled()) return
+        notify("自动重连已停止", "$label 多次恢复失败，已暂停自动重连。请打开应用查看状态或手动启动。")
     }
 
     private fun notify(title: String, text: String) {

@@ -164,8 +164,28 @@ import java.util.zip.ZipInputStream
     }
     StudioCard("留一份安心", "备份可能包含 QQ 会话和 API 密钥，请保存在自己信任的位置。") {
         LiquidButton(onClick = { RuntimeService.command(context, "backup") }, Modifier.fillMaxWidth(), enabled = !state.busy && state.componentsReady) { Text("创建本机快照") }
-        LiquidOutlinedButton(onClick = { export.launch("WhaleTalk-backup.zip") }, Modifier.fillMaxWidth(), enabled = !state.busy && state.componentsReady) { Text("导出备份 ZIP") }
-        LiquidOutlinedButton(onClick = { import.launch(arrayOf("application/zip", "application/octet-stream")) }, Modifier.fillMaxWidth(), enabled = !state.busy) { Text("选择备份文件") }
+        LiquidButton(onClick = { RuntimeService.command(context, "shared-backup") }, Modifier.fillMaxWidth(), enabled = !state.busy && state.componentsReady) { Text("立即备份到下载目录") }
+        LiquidOutlinedButton(onClick = { export.launch("WhaleTalk-backup.zip") }, Modifier.fillMaxWidth(), enabled = !state.busy && state.componentsReady) { Text("导出便携备份（不含 QQ 登录）") }
+        LiquidOutlinedButton(onClick = { import.launch(arrayOf("application/zip", "application/octet-stream")) }, Modifier.fillMaxWidth(), enabled = !state.busy) { Text("选择备份文件恢复") }
+    }
+    StudioCard("自动备份", "默认每天把登录状态、AstrBot 配置和插件备份到 Download/WhaleTalk/backups，最多保留 5 份，不会打包缓存。恢复前会先停止运行层并校验文件。") {
+        listOf(SharedBackupInterval.OFF to "关闭", SharedBackupInterval.DAILY to "每天", SharedBackupInterval.WEEKLY to "每周").forEach { (id, label) ->
+            LiquidChoice(state.sharedBackupInterval == id, {
+                runCatching { SharedBackupStore(context).setInterval(id); RuntimeStore.state.value = RuntimeStore.state.value.copy(sharedBackupInterval = id) }
+                    .onFailure { vm.error = it.message ?: "自动备份设置未能保存" }
+            }, { Text(label) }, enabled = !state.busy)
+        }
+    }
+    if (state.sharedBackups.isNotEmpty()) StudioCard("下载目录中的备份") {
+        state.sharedBackups.forEach { item ->
+            StudioStatus(item.name, Formatter.formatFileSize(context, item.bytes))
+            TextButton(onClick = { confirm = "使用这份下载目录备份恢复？当前数据会被替换，恢复前会自动保存一份快照，运行层会先停止。" to {
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(item.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                RuntimeService.command(context, "prepare-backup", sourceUri = item.uri.toString())
+            } }, enabled = !state.busy) { Text("恢复此备份") }
+        }
     }
     if (state.portableImport != null) StudioCard("备份已准备好", "恢复会替换当前机器人数据，运行层会先保存恢复前快照。") {
         LiquidButton(onClick = { confirm = "使用选中的备份替换当前数据？" to { RuntimeService.command(context, "apply-backup") } }, Modifier.fillMaxWidth(), enabled = !state.busy) { Text("恢复这份备份") }
@@ -214,18 +234,28 @@ import java.util.zip.ZipInputStream
     val context = LocalContext.current
     var recovery by remember { mutableStateOf(BackgroundRecovery.enabled(context)) }
     fun open(intent: Intent) { runCatching { context.startActivity(intent) }.onFailure { vm.error = "系统没有提供此设置入口，请在应用信息中手动设置" } }
+    val colorOs = listOf(android.os.Build.MANUFACTURER, android.os.Build.BRAND).any { it.contains("oneplus", true) || it.contains("oppo", true) || it.contains("realme", true) }
     StudioCard("让陪伴持续") {
         val exempt = context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
         StudioStatus("电池优化", if (exempt) "已豁免" else "尚未豁免", exempt)
         LiquidOutlinedButton(onClick = { open(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))) }, Modifier.fillMaxWidth()) { Text("申请电池优化豁免") }
         LiquidOutlinedButton(onClick = { open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }, Modifier.fillMaxWidth()) { Text("应用信息与后台权限") }
         LiquidOutlinedButton(onClick = { open(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)) }, Modifier.fillMaxWidth()) { Text("运行通知设置") }
+        if (colorOs) Text("ColorOS 还需要在「应用启动管理」中允许鲸语自启动和关联启动，并在最近任务中锁定应用，否则后台仍可能被系统结束。", style = MaterialTheme.typography.bodySmall)
+        else Text("部分手机还需要在系统中允许自启动，并在最近任务中锁定应用。强行停止应用后，需要你手动再打开。", style = MaterialTheme.typography.bodySmall)
+    }
+    StudioCard("掉线自动重连") {
+        val reconnect = remember { AutoReconnectSettings(context) }
+        var autoReconnect by remember { mutableStateOf(reconnect.enabled()) }
+        StudioSwitch("QQ 或消息通道掉线后自动重连", "默认开启。按 5 秒、15 秒、60 秒退避重试，次数用尽后通知你并停止。你手动暂停服务时不会再拉起。", autoReconnect, !vm.busy) { value ->
+            runCatching { reconnect.setEnabled(value); autoReconnect = value }
+                .onFailure { vm.error = "自动重连设置未能保存，请重试" }
+        }
     }
     StudioCard("重启后恢复") {
         StudioSwitch("恢复先前运行的服务", "手机重启并解锁后尝试恢复；不会自动执行终端命令", recovery) { value ->
             if (BackgroundRecovery.setEnabled(context, value)) recovery = value else vm.error = "设置未能保存，请重试"
         }
-        Text("部分手机还需要在系统中允许自启动，并在最近任务中锁定应用。强行停止应用后，需要你手动再打开。", style = MaterialTheme.typography.bodySmall)
     }
 }
 

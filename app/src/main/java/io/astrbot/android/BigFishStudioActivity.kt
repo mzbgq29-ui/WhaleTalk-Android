@@ -7,6 +7,11 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.os.SystemClock
+import android.net.Uri
+import android.provider.Settings
+import android.text.format.Formatter
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -101,12 +106,7 @@ open class BigFishStudioActivity : ComponentActivity() {
                     if (root) StudioMascot(Modifier.size(48.dp).clickable { vm.go(StudioPage.ABOUT) })
                 }
                 if (vm.busy || state.busy) StudioCard {
-                    Text(if (vm.busy) vm.task else state.phase, style = MaterialTheme.typography.bodySmall)
-                    val fraction = state.progressFraction
-                    if (!vm.busy && fraction != null) {
-                        LinearProgressIndicator(progress = { fraction.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
-                        Text("${(fraction.coerceIn(0f, 1f) * 100).toInt()}%", style = MaterialTheme.typography.labelSmall)
-                    } else LinearProgressIndicator(Modifier.fillMaxWidth())
+                    PrepareProgressBar(state, fallback = if (vm.busy) vm.task else state.phase, saving = vm.busy)
                     TextButton(onClick = { if (vm.busy) vm.cancel() else command("stop", null) }) { Text(if (vm.busy) "取消当前操作" else "取消任务并停止服务") }
                 }
             }
@@ -193,6 +193,7 @@ open class BigFishStudioActivity : ComponentActivity() {
         StudioStatus("云端模型", if (vm.configured) vm.model else "尚未配置", vm.configured)
         StudioTile("QQ 登录与连接", "打开登录画面，处理验证或重新登录", { vm.go(StudioPage.QQ) })
     }
+    StudioRuntimeDashboard(state, qq, bot)
     StudioCard("常用") {
         StudioTile("和她聊聊", "在手机上直接开始一段对话", { vm.go(StudioPage.CHAT, true) })
         StudioTile("回应方式", "谁能聊天、群聊怎么唤醒", { vm.go(StudioPage.ACCESS) })
@@ -380,12 +381,18 @@ open class BigFishStudioActivity : ComponentActivity() {
             }.onFailure { vm.error = "QQ 版本锁定设置未能保存，请重试" }
         }
     }
-    StudioCard("掉线通知") {
+    StudioCard("掉线通知与重连") {
         val alerts = remember(context) { ConnectionAlerts(context) }
         var disconnectAlerts by remember { mutableStateOf(alerts.enabled()) }
-        StudioSwitch("QQ 或消息通道掉线时通知我", "只在已经成功连接之后断开时提醒，启动过程中的「未知」状态不会通知。", disconnectAlerts, !vm.busy) { value ->
+        StudioSwitch("QQ 或消息通道掉线时通知我", "只在已经成功连接之后断开时提醒，恢复成功也会通知。启动过程中的「未知」状态不会通知。", disconnectAlerts, !vm.busy) { value ->
             runCatching { alerts.setEnabled(value); disconnectAlerts = value }
                 .onFailure { vm.error = "掉线通知设置未能保存，请重试" }
+        }
+        val reconnect = remember(context) { AutoReconnectSettings(context) }
+        var autoReconnect by remember { mutableStateOf(reconnect.enabled()) }
+        StudioSwitch("掉线后自动重连", "默认开启。进程退出或消息通道断开后按 5 秒、15 秒、60 秒重试，次数用尽后停止并通知。手动暂停不会被拉起。", autoReconnect, !vm.busy) { value ->
+            runCatching { reconnect.setEnabled(value); autoReconnect = value }
+                .onFailure { vm.error = "自动重连设置未能保存，请重试" }
         }
     }
     StudioCard("画面与占用") {
@@ -502,3 +509,56 @@ private fun channelLabel(state: ManagerState, qq: ServiceStatus): String = when 
     }
 }
 
+@Composable private fun StudioRuntimeDashboard(state: ManagerState, qq: ServiceStatus, bot: ServiceStatus) {
+    val context = LocalContext.current
+    var resources by remember { mutableStateOf(ResourceSnapshot()) }
+    LaunchedEffect(Unit) {
+        val monitor = ResourceMonitor(context)
+        while (isActive) {
+            resources = runCatching { monitor.sample(400) }.getOrDefault(resources)
+            delay(2600)
+        }
+    }
+    val reconnect by AutoReconnectStore.state.collectAsStateWithLifecycle()
+    val exempt = remember { context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName) }
+    val colorOs = listOf(Build.MANUFACTURER, Build.BRAND, Build.FINGERPRINT).any { it.contains("oneplus", true) || it.contains("oppo", true) || it.contains("realme", true) }
+    StudioCard("运行状态", "只显示本机实际测到的数据，没有的项目不会编造。") {
+        val memoryBytes = (resources.memory.totalKiB ?: resources.memory.partialKiB)?.times(1024)
+        StudioStatus("CPU", resources.cpuPercent?.let { String.format(java.util.Locale.CHINA, "约 %.1f%%", it) } ?: "测量中", resources.cpuPercent != null)
+        StudioStatus("内存", memoryBytes?.let { Formatter.formatShortFileSize(context, it) } ?: "测量中", memoryBytes != null)
+        val uptime = state.runtimeStartedAtElapsed?.let { SystemClock.elapsedRealtime() - it }?.takeIf { it >= 0 }
+        StudioStatus("运行时长", uptime?.let { formatUptime(it) } ?: "未运行", uptime != null)
+        StudioStatus("Ubuntu 环境", if (state.componentsReady) "已就绪" else if (state.environmentInstalled) "基础已安装" else "未准备", state.componentsReady)
+        StudioStatus("SnowLuma", layerLabel(qq), qq.ready)
+        StudioStatus("Linux QQ", qqAccountLabel(state, qq), qq.qq == QqState.ONLINE)
+        StudioStatus("AstrBot", layerLabel(bot), bot.ready)
+        if (reconnect.exhausted) Text("自动重连已暂停：${reconnect.layer ?: "服务"}多次恢复失败，请手动检查。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        else if (reconnect.delayMillis != null) Text("正在自动重连${reconnect.layer ?: ""}（第 ${reconnect.attempt} 次，约 ${reconnect.delayMillis / 1000} 秒后重试）。", style = MaterialTheme.typography.bodySmall)
+    }
+    if (!exempt && (qq.desiredRunning || bot.desiredRunning)) StudioCard("后台容易被系统结束") {
+        Text(if (colorOs) "ColorOS 还需要在「应用启动管理」中允许鲸语自启动和关联启动，并在最近任务中锁定应用。" else "建议先关闭电池优化，再在系统设置里允许后台运行。")
+        LiquidOutlinedButton(onClick = {
+            runCatching { context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))) }
+        }, Modifier.fillMaxWidth()) { Text("申请电池优化豁免") }
+    }
+}
+
+private fun layerLabel(status: ServiceStatus): String = when (status.process) {
+    ProcessState.RUNNING -> if (status.ready) "运行中" else "已启动，等待就绪"
+    ProcessState.STARTING -> "正在启动"
+    ProcessState.STOPPING -> "正在停止"
+    ProcessState.CRASHED -> status.detail.ifBlank { "异常退出" }
+    ProcessState.STOPPED -> "已停止"
+}
+
+private fun formatUptime(ms: Long): String {
+    val total = ms / 1000
+    val hours = total / 3600
+    val minutes = (total % 3600) / 60
+    val seconds = total % 60
+    return when {
+        hours > 0 -> "${hours} 小时 ${minutes} 分"
+        minutes > 0 -> "${minutes} 分 ${seconds} 秒"
+        else -> "${seconds} 秒"
+    }
+}

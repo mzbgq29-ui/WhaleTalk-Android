@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Application
 import android.os.Bundle
 import io.astrbot.android.runtime.AppVisibility
+import io.astrbot.android.runtime.SharedBackupScheduler
 
 class ManagerApplication : Application(), Application.ActivityLifecycleCallbacks {
     override fun onCreate() {
@@ -11,6 +12,7 @@ class ManagerApplication : Application(), Application.ActivityLifecycleCallbacks
         AppText.initialize(this)
         io.astrbot.android.runtime.LegacyRuntimeCleanup.importPreferences(this)
         registerActivityLifecycleCallbacks(this)
+        SharedBackupScheduler.schedule(this)
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {

@@ -61,8 +61,14 @@ internal object BackgroundRecovery {
 class RuntimeBootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            Intent.ACTION_BOOT_COMPLETED -> BackgroundRecovery.request(context, "boot")
-            Intent.ACTION_MY_PACKAGE_REPLACED -> BackgroundRecovery.request(context, "package-replaced")
+            Intent.ACTION_BOOT_COMPLETED -> {
+                BackgroundRecovery.request(context, "boot")
+                SharedBackupScheduler.schedule(context)
+            }
+            Intent.ACTION_MY_PACKAGE_REPLACED -> {
+                BackgroundRecovery.request(context, "package-replaced")
+                SharedBackupScheduler.schedule(context)
+            }
         }
     }
 }

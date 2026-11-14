@@ -202,8 +202,7 @@ class BigFishWizardActivity : ComponentActivity() {
                 LiquidPanel(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), shape = RoundedCornerShape(30.dp)) {
                     Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (working) {
-                            LinearProgressIndicator(Modifier.fillMaxWidth().semantics { contentDescription = "任务正在进行" })
-                            Text(if (form.saving) form.task else state.phase + if (elapsed > 0) " · ${elapsed}s" else "", style = MaterialTheme.typography.bodySmall)
+                            PrepareProgressBar(state, fallback = (if (form.saving) form.task else state.phase) + if (elapsed > 0) " · ${elapsed}s" else "", saving = form.saving)
                             TextButton(onClick = {
                                 if (form.saving && !RuntimeStore.state.value.busy) verificationJob?.cancel()
                                 else runCatching { requested = command("stop") }.onFailure { form.error = "停止请求未能启动，请在高级管理中停止服务" }

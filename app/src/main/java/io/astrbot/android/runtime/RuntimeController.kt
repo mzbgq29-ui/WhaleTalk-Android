@@ -55,6 +55,12 @@ data class ManagerState(
     val environmentCheck: EnvironmentCheckReport? = null,
     val storageSpace: StorageSpaceReading = StorageSpaceReading(),
     val progressFraction: Float? = null,
+    val progressBytes: Long? = null,
+    val progressTotalBytes: Long? = null,
+    val progressStartedAtElapsed: Long? = null,
+    val runtimeStartedAtElapsed: Long? = null,
+    val sharedBackups: List<SharedBackupItem> = emptyList(),
+    val sharedBackupInterval: SharedBackupInterval = SharedBackupInterval.DAILY,
 ) {
     val busy: Boolean get() = executing || pendingRequests.isNotEmpty()
 }
@@ -109,10 +115,12 @@ object RuntimeStore {
         }.onFailure { DesktopStore.state.update { it.copy(error = AppText.get(R.string.desktop_operation_failed)) } }
         runCatching { HarnessRepository(context).refresh() }.onFailure { HarnessStore.state.update { it.copy(error = AppText.get(R.string.harness_failed)) } }
         runCatching { SnowLumaRepository(context).refresh() }.onFailure { SnowLumaStore.state.update { it.copy(error = AppText.get(R.string.snow_failed)) } }
+        val shared = runCatching { SharedBackupStore(context) }.getOrNull()
         state.update { it.copy(environmentInstalled = installed, componentsReady = ready,
             services = it.services.mapValues { (id, status) -> if (owner == null) status.copy(history = histories.getValue(id)) else status },
             versions = inspection?.components.orEmpty(), versionNotice = inspection?.notice, versionsCheckedAtMillis = inspection?.checkedAtMillis,
             backups = backups, backupLimits = BackupCapacitySettings(context).read(),
+            sharedBackups = shared?.list().orEmpty(), sharedBackupInterval = shared?.interval() ?: SharedBackupInterval.DAILY,
             protectedBackupIds = updates.protectedBackupIds + images.protectedBackupIds,
             preparedUpdate = updates.preparedInfo, rollback = updates.rollbackInfo, availableUpdate = availableUpdate,
             latestUpdate = latestUpdate,
@@ -168,7 +176,7 @@ class RuntimeController(private val context: Context, private val scope: Corouti
     private val preferences = context.getSharedPreferences("manager", Context.MODE_PRIVATE)
     private val histories = ServiceHistoryRepository(context)
     private val supervisors = ServiceId.entries.associateWith { id ->
-        ProcessSupervisor(id, scope, launcher = {
+        ProcessSupervisor(id, scope, autoRestart = { AutoReconnectSettings(context).enabled() }, launcher = {
             if (id == ServiceId.SNOWLUMA) {
                 // The stable service slot preserves saved desired state, sessions and history.
                 snowluma.stop()
@@ -178,7 +186,15 @@ class RuntimeController(private val context: Context, private val scope: Corouti
                 try {
                     kotlinx.coroutines.withTimeout(BigFishSnowLuma.PREPARE_TIMEOUT_MS) {
                         BigFishSnowLuma(context).prepare { phase, fraction ->
-                            updateState { it.copy(phase = phase, progressFraction = fraction) }
+                            val size = PrepareProgressReading.bytesFromMessage(phase)
+                            updateState { it.copy(
+                                phase = phase,
+                                progressFraction = fraction,
+                                progressBytes = size?.first,
+                                progressTotalBytes = size?.second,
+                                progressStartedAtElapsed = it.progressStartedAtElapsed
+                                    ?: android.os.SystemClock.elapsedRealtime(),
+                            ) }
                         }
                     }
                 } catch (failure: kotlinx.coroutines.TimeoutCancellationException) {
@@ -203,6 +219,15 @@ class RuntimeController(private val context: Context, private val scope: Corouti
             if (id == ServiceId.ASTRBOT && exitCode == 73) AppText.get(R.string.astrbot_instance_busy) else null
         })
     }
+
+    private val autoReconnect = AutoReconnectCoordinator(
+        context, scope,
+        restart = { id -> runCatching { RuntimeService.command(context, "restart", id) } },
+        desired = { id -> supervisors.getValue(id).state.value.desiredRunning },
+        maintenance = { RuntimeStore.state.value.maintenance },
+        busy = { RuntimeStore.state.value.busy },
+        channelState = { supervisors.getValue(ServiceId.SNOWLUMA).state.value.oneBot },
+    )
 
     init {
         scope.launch(Dispatchers.IO) {
@@ -233,11 +258,35 @@ class RuntimeController(private val context: Context, private val scope: Corouti
                 }
             }
         }
+        SharedBackupScheduler.schedule(context)
+        scope.launch(Dispatchers.IO) {
+            while (isActive) {
+                delay(15 * 60 * 1000L)
+                if (RuntimeStore.owner === owner && RuntimeStore.state.value.componentsReady &&
+                    !RuntimeStore.state.value.busy && SharedBackupSettings(context).isDue()) {
+                    runCatching { RuntimeService.command(context, "shared-backup", backupId = "automatic") }
+                }
+            }
+        }
         supervisors.forEach { (id, supervisor) ->
             scope.launch {
                 var saved = histories.read(id)
+                var previous = supervisor.state.value
                 supervisor.state.collect { status ->
-                    updateState { it.copy(services = it.services + (id to status)) }
+                    if (previous.process != status.process) autoReconnect.onProcess(id, previous, status)
+                    previous = status
+                    updateState { current ->
+                        val services = current.services + (id to status)
+                        val running = services.values.any { it.process == ProcessState.RUNNING || it.process == ProcessState.STARTING }
+                        current.copy(
+                            services = services,
+                            runtimeStartedAtElapsed = when {
+                                running && current.runtimeStartedAtElapsed == null -> android.os.SystemClock.elapsedRealtime()
+                                !running && services.values.none { it.desiredRunning } -> null
+                                else -> current.runtimeStartedAtElapsed
+                            },
+                        )
+                    }
                     if (status.history != saved && RuntimeStore.owner === owner) {
                         runCatching { histories.save(id, status.history) }
                             .onSuccess { saved = status.history }
@@ -309,6 +358,7 @@ class RuntimeController(private val context: Context, private val scope: Corouti
                             qq.state, oneBot, System.currentTimeMillis())
                         if (id == ServiceId.SNOWLUMA) {
                             ConnectionAlerts(context).maybeNotify(before.qq, qq.state, before.oneBot, oneBot)
+                            autoReconnect.onChannel(before.oneBot, oneBot, before.process, id)
                             if (before.qq != QqState.ONLINE && qq.state == QqState.ONLINE) {
                                 val hasBackup = RuntimeStore.state.value.backups.isNotEmpty()
                                 val pending = preferences.getBoolean("backup_reminder_pending", true)
@@ -336,7 +386,8 @@ class RuntimeController(private val context: Context, private val scope: Corouti
         val readOnlyCheck = action in setOf("export-diagnostics", "check-environment")
         val prepareDesktop = action == "desktop-install" || action in setOf("initialize", "desktop-start", "desktop-open", "desktop-qq-start", "desktop-qq-open", "desktop-qq-install", "desktop-lan-save") &&
             !desktopRepository.configuration().installed
-        updateState { it.copy(executing = true, error = if (readOnlyCheck) diagnosticSnapshot.error else null, notice = null, progressFraction = null) }
+        updateState { it.copy(executing = true, error = if (readOnlyCheck) diagnosticSnapshot.error else null, notice = null,
+            progressFraction = null, progressBytes = null, progressTotalBytes = null, progressStartedAtElapsed = null) }
         if (action.startsWith("ssh-")) SshStore.state.update { it.copy(busy = true, error = null) }
         if (action.startsWith("cpolar-")) CpolarStore.state.update { it.copy(busy = true, error = null) }
         if (action.startsWith("harness-")) HarnessStore.state.update { it.copy(busy = true,error = null,downloaded = 0,total = 0, installation = null) }
@@ -356,7 +407,7 @@ class RuntimeController(private val context: Context, private val scope: Corouti
                 updateState { it.copy(notice = AppText.get(R.string.ui_diagnostics_exported_review_log_contents_before_sharing)) }
                 return@withLock
             }
-            resumeSsh = prepareDesktop || action in setOf("backup", "backup-apk", "restore", "export-backup", "apply-backup", "apply-update", "rollback", "apply-runtime", "rollback-runtime", "repair-runtime") ||
+            resumeSsh = prepareDesktop || action in setOf("backup", "backup-apk", "restore", "export-backup", "apply-backup", "apply-update", "rollback", "apply-runtime", "rollback-runtime", "repair-runtime", "shared-backup") ||
                 backups.hasPendingRestore || updates.hasPendingUpdate || images.hasPendingUpdate
             if (resumeSsh) {
                 terminal.stop(if (TerminalStore.state.value.running) AppText.get(R.string.terminal_maintenance_closed) else null)
@@ -598,6 +649,7 @@ class RuntimeController(private val context: Context, private val scope: Corouti
                         if (wanted) AppText.get(R.string.ui_local_endpoint_checked_again) else AppText.get(R.string.ui_applies_when_the_service_starts_884b1)) }
                 }
                 "backup", "backup-apk", "restore" -> maintain(action, backupId)
+                "shared-backup" -> maintainSharedBackup(automatic = backupId == "automatic")
                 "save-backup-limits" -> {
                     val limits = BackupLimits(backupLimitCount, backupLimitMiB.toLong() * 1024 * 1024)
                     withContext(Dispatchers.IO) { BackupCapacitySettings(context).save(limits) }
@@ -701,7 +753,11 @@ class RuntimeController(private val context: Context, private val scope: Corouti
                     if (!backups.hasPendingRestore && !updates.hasPendingUpdate && !images.hasPendingUpdate) retainLogs()
                     RuntimeStore.refreshInstallation(context)
                 }
-                updateState { it.copy(executing = false, phase = if (readOnlyCheck) diagnosticSnapshot.phase else it.phase, progressFraction = if (readOnlyCheck) diagnosticSnapshot.progressFraction else null) }
+                updateState { it.copy(executing = false, phase = if (readOnlyCheck) diagnosticSnapshot.phase else it.phase,
+                    progressFraction = if (readOnlyCheck) diagnosticSnapshot.progressFraction else null,
+                    progressBytes = if (readOnlyCheck) diagnosticSnapshot.progressBytes else null,
+                    progressTotalBytes = if (readOnlyCheck) diagnosticSnapshot.progressTotalBytes else null,
+                    progressStartedAtElapsed = if (readOnlyCheck) diagnosticSnapshot.progressStartedAtElapsed else null) }
                 event(AppText.get(R.string.ui_finished_072d2, action))
             }
         }
@@ -954,6 +1010,50 @@ class RuntimeController(private val context: Context, private val scope: Corouti
             throw failure
         } finally {
             withContext(NonCancellable) {
+                supervisors.values.forEach { it.setMaintenance(MaintenanceState.IDLE) }
+                updateState { it.copy(maintenance = MaintenanceState.IDLE) }
+            }
+        }
+    }
+
+    private suspend fun maintainSharedBackup(automatic: Boolean) {
+        install()
+        checkLocalized(RuntimeStore.state.value.componentsReady) { AppText.get(R.string.ui_initialize_the_complete_runtime_first) }
+        val settings = SharedBackupSettings(context)
+        if (automatic && !settings.isDue()) {
+            SharedBackupScheduler.schedule(context)
+            return
+        }
+        if (automatic) settings.markAttempt()
+        val versions = withContext(Dispatchers.IO) { InstalledVersions.read(context) }
+        val wanted = supervisors.filterValues { it.state.value.desiredRunning }.keys.toList()
+        val store = SharedBackupStore(context)
+        val staging = java.io.File(context.filesDir, "staging/shared-export")
+        updateState { it.copy(maintenance = MaintenanceState.BACKING_UP, phase = "正在停止服务以创建一致的共享备份") }
+        try {
+            supervisors.values.forEach { it.setMaintenance(MaintenanceState.BACKING_UP) }
+            supervisors.values.toList().reversed().forEach { it.stop() }
+            updateState { it.copy(phase = "正在打包登录状态、配置和插件（已排除缓存）") }
+            withContext(Dispatchers.IO) {
+                DurableFiles.delete(staging)
+                check(staging.mkdirs())
+            }
+            val zip = java.io.File(staging, "backup.zip")
+            val info = SharedBackupArchive().write(java.io.File(context.filesDir, "persistent"), zip, versions, automatic)
+            updateState { it.copy(phase = "正在写入 Download/WhaleTalk/backups") }
+            withContext(Dispatchers.IO) { store.publish(zip, info); if (automatic) store.markSuccess(); SharedBackupScheduler.schedule(context) }
+            supervisors.values.forEach { it.setMaintenance(MaintenanceState.IDLE) }
+            resumeAfterMaintenance(wanted)
+            updateState { it.copy(notice = "已保存到 Download/WhaleTalk/backups，只保留最近 5 份。") }
+        } catch (failure: Throwable) {
+            withContext(NonCancellable) {
+                supervisors.values.forEach { it.setMaintenance(MaintenanceState.IDLE) }
+                if (failure !is CancellationException) runCatching { resumeAfterMaintenance(wanted) }.onFailure { failure.addSuppressed(it) }
+            }
+            throw failure
+        } finally {
+            withContext(NonCancellable) {
+                withContext(Dispatchers.IO) { DurableFiles.delete(staging) }
                 supervisors.values.forEach { it.setMaintenance(MaintenanceState.IDLE) }
                 updateState { it.copy(maintenance = MaintenanceState.IDLE) }
             }

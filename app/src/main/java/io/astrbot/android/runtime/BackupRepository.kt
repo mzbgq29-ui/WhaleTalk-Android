@@ -144,6 +144,7 @@ class BackupRepository(private val filesDir: File, private val protectedIds: () 
 
     /** Merge selected portable scopes into a private copy; QQ HOME and other scopes stay local. */
     internal suspend fun beginPortableRestore(beforeId: String, versions: RuntimeVersions, source: File,
+                                             scopes: List<String> = PortableBackupArchive.SCOPES,
                                              validate: suspend (File) -> Unit) = withContext(Dispatchers.IO) {
         requireLocalized(validId(beforeId)) { AppText.get(R.string.ui_invalid_pre_restore_snapshot_id) }
         checkLocalized(!hasPendingRestore && !previous.exists()) { AppText.get(R.string.ui_an_unresolved_restore_record_exists_current_data_is_preserved) }
@@ -158,7 +159,7 @@ class BackupRepository(private val filesDir: File, private val protectedIds: () 
             copyTree(persistent, staged)
             val rootMode = Os.lstat(staged.path).st_mode and 511
             Os.chmod(staged.path, rootMode or 448)
-            for (scope in PortableBackupArchive.SCOPES) {
+            for (scope in scopes) {
                 val target = File(staged, scope)
                 val parent = target.parentFile!!
                 requireLocalized(!Files.isSymbolicLink(parent.toPath())) { AppText.get(R.string.ui_the_configuration_parent_directory_is_a_link_current_data) }

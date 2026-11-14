@@ -20,7 +20,7 @@ object ResourceMemoryPolicy {
         return if (fields[0] in listOf("Z", "X", "x")) null else ticks
     }
 
-    private fun statFields(pid: Int, stat: String): List<String> {
+    internal fun statFields(pid: Int, stat: String): List<String> {
         require(stat.substringBefore(" (").toIntOrNull() == pid) { "Process identity mismatch" }
         val separator = stat.lastIndexOf(") ")
         require(separator > 0)

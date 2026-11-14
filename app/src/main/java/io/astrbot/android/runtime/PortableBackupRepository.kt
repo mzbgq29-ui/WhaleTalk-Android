@@ -25,7 +25,10 @@ class PortableBackupRepository(private val context: Context) {
     private val archive = PortableBackupArchive()
     val hasInterruptedWork: Boolean get() = export.exists() || (imports.exists() && !DurableFiles.exists(manifest))
     val preparedInfo: PortableBackupInfo? get() = runCatching {
-        DurableFiles.read(manifest)?.takeIf { data.isDirectory }?.let(archive::info)
+        val value = DurableFiles.read(manifest)?.takeIf { data.isDirectory } ?: return@runCatching null
+        if (value.optString("format") == SharedBackupArchive.FORMAT) SharedBackupArchive().info(value).let {
+            PortableBackupInfo(it.id, it.createdAt, it.bytes, it.count, it.versions)
+        } else archive.info(value)
     }.getOrNull()
 
     suspend fun prepareImport(uri: Uri, versions: RuntimeVersions, progress: (String) -> Unit): PortableBackupInfo = withContext(Dispatchers.IO) {
@@ -39,18 +42,32 @@ class PortableBackupRepository(private val context: Context) {
                 FileOutputStream(inputFile).use { output -> transfer(input, output, imports); output.fd.sync() }
             }
             progress(AppText.get(R.string.ui_verifying_portable_backup_scope_versions_and_file_digests))
-            archive.read(inputFile, data, versions).also { inputFile.delete() }
+            if (SharedBackupArchive().peekFormat(inputFile) == SharedBackupArchive.FORMAT) {
+                SharedBackupArchive().read(inputFile, data, versions)
+                inputFile.delete()
+            } else {
+                archive.read(inputFile, data, versions)
+                inputFile.delete()
+            }
         } catch (failure: Throwable) { discardImport(); throw failure }
     }
 
     suspend fun verifyPrepared(versions: RuntimeVersions): PortableBackupInfo = withContext(Dispatchers.IO) {
-        archive.verify(data, requireNotNullLocalized(DurableFiles.read(manifest)) { AppText.get(R.string.ui_import_a_portable_backup_first) }, versions, exclusive = true)
+        val metadata = requireNotNullLocalized(DurableFiles.read(manifest)) { AppText.get(R.string.ui_import_a_portable_backup_first) }
+        if (metadata.optString("format") == SharedBackupArchive.FORMAT) {
+            SharedBackupArchive().verify(data, metadata, versions).let {
+                PortableBackupInfo(it.id, it.createdAt, it.bytes, it.count, it.versions)
+            }
+        } else archive.verify(data, metadata, versions, exclusive = true)
     }
 
     suspend fun beginRestore(beforeSnapshot: BackupInfo, versions: RuntimeVersions) {
         val metadata = withContext(Dispatchers.IO) { requireNotNullLocalized(DurableFiles.read(manifest)) { AppText.get(R.string.ui_portable_backup_manifest_is_missing) } }
-        BackupRepository(files).beginPortableRestore(beforeSnapshot.id, versions, data) { candidate ->
-            archive.verify(candidate, metadata, versions, exclusive = candidate == data)
+        val shared = metadata.optString("format") == SharedBackupArchive.FORMAT
+        val scopes = if (shared) io.astrbot.android.core.SharedBackupPolicy.SCOPES else PortableBackupArchive.SCOPES
+        BackupRepository(files).beginPortableRestore(beforeSnapshot.id, versions, data, scopes = scopes) { candidate ->
+            if (shared) SharedBackupArchive().verify(candidate, metadata, versions)
+            else archive.verify(candidate, metadata, versions, exclusive = candidate == data)
         }
     }
 
