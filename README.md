@@ -22,13 +22,13 @@
 
 ## 界面截图
 
-以下是鲸语 1.6.1 在 Android 模拟器中的应用界面。
+以下是鲸语 1.7.0 在 Android 模拟器中的应用界面。
 
 <p align="center">
-  <a href="docs/images/whaletalk-1.6.1/home.png"><img src="docs/images/whaletalk-1.6.1/home.png" alt="鲸语首页" width="190"></a>
-  <a href="docs/images/whaletalk-1.6.1/model.png"><img src="docs/images/whaletalk-1.6.1/model.png" alt="云端模型设置" width="190"></a>
-  <a href="docs/images/whaletalk-1.6.1/replies.png"><img src="docs/images/whaletalk-1.6.1/replies.png" alt="鲸语回应设置" width="190"></a>
-  <a href="docs/images/whaletalk-1.6.1/tools.png"><img src="docs/images/whaletalk-1.6.1/tools.png" alt="鲸语工具页" width="190"></a>
+  <a href="docs/images/whaletalk-1.7.0/home.png"><img src="docs/images/whaletalk-1.7.0/home.png" alt="鲸语运行首页" width="190"></a>
+  <a href="docs/images/whaletalk-1.7.0/chat.png"><img src="docs/images/whaletalk-1.7.0/chat.png" alt="鲸语聊天页" width="190"></a>
+  <a href="docs/images/whaletalk-1.7.0/tools.png"><img src="docs/images/whaletalk-1.7.0/tools.png" alt="鲸语工具页" width="190"></a>
+  <a href="docs/images/whaletalk-1.7.0/diagnostics.png"><img src="docs/images/whaletalk-1.7.0/diagnostics.png" alt="鲸语快速排障" width="190"></a>
 </p>
 
 ## 系统要求
