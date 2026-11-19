@@ -2,7 +2,7 @@
 
 鲸语是面向 Android 手机的 QQ 陪伴机器人应用，提供原生界面管理模型、角色、人设和插件。项目由 **mzbgq** 维护；运行层使用 PRoot、Ubuntu、AstrBot、SnowLuma 和 Linux QQ。文字模型使用你自己配置的云端 API，默认无需额外的记忆 API，语音保持关闭。
 
-> 当前版本为「鲸语 WhaleTalk」**1.6.0**。消息通道使用较短的 IPC 路径，真实账号收发请以实际手机结果为准。
+> 当前版本为「鲸语 WhaleTalk」**1.6.1**。调整云端模型或回应设置时，消息通道配置不变就能保留 QQ 会话。
 
 ## 开始使用
 
@@ -19,6 +19,17 @@
 - 内置酒馆角色仓库，支持导入 V1/V2/V3 PNG 或 JSON 角色卡，静态适配开场和世界书；不执行角色卡脚本。
 - 内置陪伴与记忆能力，使用已有聊天模型；可在应用内查看运行日志和备份设置。
 - 修复本机 IPC 路径过长导致的消息通道发现问题；QQ 仍为 Linux ARM64 3.2.35-54395（默认锁定，防止热更新替换 hook 模块），SnowLuma 为 2.4.2。
+
+## 界面截图
+
+以下是鲸语 1.6.1 在 Android 模拟器中的应用界面。
+
+<p align="center">
+  <a href="docs/images/whaletalk-1.6.1/home.png"><img src="docs/images/whaletalk-1.6.1/home.png" alt="鲸语首页" width="190"></a>
+  <a href="docs/images/whaletalk-1.6.1/model.png"><img src="docs/images/whaletalk-1.6.1/model.png" alt="云端模型设置" width="190"></a>
+  <a href="docs/images/whaletalk-1.6.1/replies.png"><img src="docs/images/whaletalk-1.6.1/replies.png" alt="鲸语回应设置" width="190"></a>
+  <a href="docs/images/whaletalk-1.6.1/tools.png"><img src="docs/images/whaletalk-1.6.1/tools.png" alt="鲸语工具页" width="190"></a>
+</p>
 
 ## 系统要求
 
