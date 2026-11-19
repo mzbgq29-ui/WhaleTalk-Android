@@ -81,6 +81,27 @@ class BigFishConfigTest {
         assertEquals("napcat:FriendMessage:100002",migrated.getJSONObject("platform_settings").getJSONArray("id_whitelist").getString(0))
         assertEquals("qq",BigFishConfig.astrbot(JSONObject(),input,token).getJSONArray("platform").getJSONObject(0).getString("id"))
     }
+    @Test fun savingModelAndReplySettingsKeepsTheSnowLumaBridge() {
+        val original = BigFishConfig.astrbot(JSONObject(), input, token)
+        val changed = BigFishInput(input.owner, input.endpoint, "gpt-5", input.key, "100003", "200003")
+        val updated = BigFishConfig.astrbot(original, changed, token)
+
+        assertEquals(QqPlatform.bridge(original), QqPlatform.bridge(updated))
+        assertEquals("gpt-5", updated.getJSONArray("provider").getJSONObject(0).getString("model"))
+        assertEquals("qq:FriendMessage:100003", updated.getJSONObject("platform_settings").getJSONArray("id_whitelist").getString(0))
+    }
+    @Test fun snowLumaBridgeChangesWithItsPortTokenOrEnabledState() {
+        val original = BigFishConfig.astrbot(JSONObject(), input, token)
+        val bridge = requireNotNull(QqPlatform.bridge(original))
+        val platform = requireNotNull(QqPlatform.configuration(original))
+
+        platform.put("ws_reverse_port", 6200)
+        assertNotEquals(bridge, QqPlatform.bridge(original))
+        platform.put("ws_reverse_port", bridge.port).put("ws_reverse_token", "cd".repeat(32))
+        assertNotEquals(bridge, QqPlatform.bridge(original))
+        platform.put("ws_reverse_token", token).put("enable", false)
+        assertNotEquals(bridge, QqPlatform.bridge(original))
+    }
     @Test fun rejectsInvalidPairingSecret() {
         assertThrows(IllegalArgumentException::class.java) { BigFishConfig.astrbot(JSONObject(), input, "") }
     }

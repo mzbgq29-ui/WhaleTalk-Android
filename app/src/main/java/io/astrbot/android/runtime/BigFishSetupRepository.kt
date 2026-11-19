@@ -10,7 +10,7 @@ import org.json.JSONObject
 import java.io.File
 import java.security.SecureRandom
 
-/** Mutations run under RuntimeStore.operationLock with both bot processes stopped. */
+/** Mutations run under RuntimeStore.operationLock with AstrBot stopped. */
 internal class BigFishSetupRepository(private val context: Context) {
     private val root = File(context.filesDir, "persistent")
     private val request = File(root, "manager/bigfish-request.json")
@@ -50,23 +50,24 @@ internal class BigFishSetupRepository(private val context: Context) {
             .put("groups", input.groups.joinToString(",")).put("options", BigFishConfig.optionsJson(input.options))
             .put("verifiedAt", verifiedAt).put("requestId", java.util.UUID.randomUUID().toString()))
     }
-    fun prepare(wanted: Set<ServiceId>) {
+    fun configurationUpdate(): JSONObject {
         check(!needsRecovery) { "上次配置尚未恢复" }
         val values = requireNotNull(safeRead(request)) { "请先填写模型信息" }
         val input = BigFishInput(values.getString("owner"), values.getString("endpoint"), values.getString("model"),
             values.getString("key"), values.optString("friends"), values.optString("groups"), BigFishConfig.readOptions(values.optJSONObject("options")))
         val current = requireNotNull(safeRead(configuration)) { "运行环境尚未准备好" }
-        val platforms = current.optJSONArray("platform") ?: JSONArray()
-        val existingToken = (0 until platforms.length()).mapNotNull { platforms.optJSONObject(it) }
-            .firstOrNull { QqPlatform.matches(it.optString("id")) }?.optString("ws_reverse_token").orEmpty()
+        val existingToken = QqPlatform.bridge(current)?.token.orEmpty()
         val token = existingToken.takeIf { it.matches(Regex("[a-f0-9]{64}")) } ?: ByteArray(32).also(SecureRandom()::nextBytes)
             .joinToString("") { "%02x".format(it.toInt() and 255) }
-        val updates = linkedMapOf(configuration to BigFishConfig.astrbot(current, input, token))
+        return BigFishConfig.astrbot(current, input, token)
+    }
+    fun prepare(updated: JSONObject, wanted: Set<ServiceId>) {
+        check(!needsRecovery) { "上次配置尚未恢复" }
         val previous = JSONArray()
-        (updates.keys + summary).forEach { file -> previous.put(JSONObject().put("path", relative(file))
+        listOf(configuration, summary).forEach { file -> previous.put(JSONObject().put("path", relative(file))
             .put("existed", DurableFiles.exists(file)).put("value", safeRead(file) ?: JSONObject.NULL)) }
         write(journal, JSONObject().put("schema", 1).put("files", previous).put("wanted", JSONArray(wanted.map { it.name })))
-        updates.forEach { (file, value) -> write(file, value) }
+        write(configuration, updated)
     }
     fun commit() {
         val values = requireNotNull(safeRead(request))

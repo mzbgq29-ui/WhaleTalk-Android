@@ -168,6 +168,7 @@ class RuntimeController(private val context: Context, private val scope: Corouti
         .readTimeout(3, TimeUnit.SECONDS).callTimeout(5, TimeUnit.SECONDS).followRedirects(false).build()
     private var snowHealth: SnowLumaHealth? = null
     private var snowEndpoint: LocalEndpoint? = null
+    @Volatile private var activeSnowBridge: QqPlatform.Bridge? = null
     private val oneBotObservation = OneBotObservation(context)
     private val astrbotStartup = AstrBotStartup(context)
     private val versionWatcher = VersionInspectionWatcher(context.filesDir)
@@ -183,7 +184,7 @@ class RuntimeController(private val context: Context, private val scope: Corouti
                 desktopRepository.setDesired(false)
                 desktopRepository.setQqDesired(false)
                 desktop.stop()
-                try {
+                activeSnowBridge = try {
                     kotlinx.coroutines.withTimeout(BigFishSnowLuma.PREPARE_TIMEOUT_MS) {
                         BigFishSnowLuma(context).prepare { phase, fraction ->
                             val size = PrepareProgressReading.bytesFromMessage(phase)
@@ -226,7 +227,6 @@ class RuntimeController(private val context: Context, private val scope: Corouti
         desired = { id -> supervisors.getValue(id).state.value.desiredRunning },
         maintenance = { RuntimeStore.state.value.maintenance },
         busy = { RuntimeStore.state.value.busy },
-        channelState = { supervisors.getValue(ServiceId.SNOWLUMA).state.value.oneBot },
     )
 
     init {
@@ -298,6 +298,7 @@ class RuntimeController(private val context: Context, private val scope: Corouti
                 var healthGeneration = -1L
                 val interfaceHealth = InterfaceHealthPolicy()
                 var observedLaunch: String? = null
+                var observedAstrBotGeneration: Long? = null
                 var completedAt: Long? = null
                 var completedGeneration: Long? = null
                 val polling = combine(supervisor.state, AppVisibility.visible,
@@ -321,6 +322,7 @@ class RuntimeController(private val context: Context, private val scope: Corouti
                             healthGeneration = before.processGeneration
                             interfaceHealth.reset(android.os.SystemClock.elapsedRealtime())
                             observedLaunch = null
+                            observedAstrBotGeneration = null
                         }
                         if (id == ServiceId.ASTRBOT) astrbotStartup.launchId()?.let { launch ->
                             if (observedLaunch != null && observedLaunch != launch) {
@@ -350,15 +352,31 @@ class RuntimeController(private val context: Context, private val scope: Corouti
                             runCatching { snowHealth?.query(BigFishSnowLuma(context).password()) ?: QqObservation(QqState.UNKNOWN) }
                                 .getOrDefault(QqObservation(QqState.UNKNOWN))
                         } else QqObservation(QqState.UNKNOWN)
-                        val oneBot = if (id == ServiceId.SNOWLUMA &&
-                            supervisors.getValue(ServiceId.ASTRBOT).state.value.process == ProcessState.RUNNING)
-                            oneBotObservation.query(qq.account) else OneBotState.UNKNOWN
+                        val astrBotSupervisor = supervisors.getValue(ServiceId.ASTRBOT)
+                        val astrBot = astrBotSupervisor.state.value
+                        val oneBot = if (id == ServiceId.SNOWLUMA && astrBot.process == ProcessState.RUNNING)
+                            oneBotObservation.query(qq.account).takeIf {
+                                val current = astrBotSupervisor.state.value
+                                current.process == ProcessState.RUNNING && current.processGeneration == astrBot.processGeneration
+                            } ?: OneBotState.UNKNOWN else OneBotState.UNKNOWN
                         val health = interfaceHealth.observe(connection.enabled, available, android.os.SystemClock.elapsedRealtime())
                         supervisor.observe(before.processGeneration, health,
                             qq.state, oneBot, System.currentTimeMillis())
                         if (id == ServiceId.SNOWLUMA) {
                             ConnectionAlerts(context).maybeNotify(before.qq, qq.state, before.oneBot, oneBot)
-                            autoReconnect.onChannel(before.oneBot, oneBot, before.process, id)
+                            val previousChannel = before.oneBot.takeIf {
+                                observedAstrBotGeneration == astrBot.processGeneration
+                            } ?: OneBotState.UNKNOWN
+                            observedAstrBotGeneration = astrBot.processGeneration
+                            autoReconnect.onChannel(previousChannel, oneBot, before.process, id) {
+                                val currentSnow = supervisor.state.value
+                                val currentAstrBot = astrBotSupervisor.state.value
+                                currentSnow.process == ProcessState.RUNNING &&
+                                    currentSnow.processGeneration == before.processGeneration &&
+                                    currentSnow.oneBot == OneBotState.DISCONNECTED &&
+                                    currentAstrBot.process == ProcessState.RUNNING &&
+                                    currentAstrBot.processGeneration == astrBot.processGeneration
+                            }
                             if (before.qq != QqState.ONLINE && qq.state == QqState.ONLINE) {
                                 val hasBackup = RuntimeStore.state.value.backups.isNotEmpty()
                                 val pending = preferences.getBoolean("backup_reminder_pending", true)
@@ -1066,10 +1084,18 @@ class RuntimeController(private val context: Context, private val scope: Corouti
         configuration.prepareDefaults()
         val firstSetup = withContext(Dispatchers.IO) { bigFishSetup.summary() == null }
         val wanted = ServiceId.entries.filter { supervisors.getValue(it).state.value.desiredRunning }.toSet()
-        supervisors.values.toList().reversed().forEach { it.stop() }
+        val astrBot = supervisors.getValue(ServiceId.ASTRBOT)
+        val snowLuma = supervisors.getValue(ServiceId.SNOWLUMA)
+        var restartSnow = false
         updateState { it.copy(phase = "正在应用模型、主人和消息通道配置") }
         try {
-            withContext(Dispatchers.IO) { bigFishSetup.prepare(wanted) }
+            astrBot.stop()
+            val updated = withContext(Dispatchers.IO) { bigFishSetup.configurationUpdate() }
+            restartSnow = ServiceId.SNOWLUMA in wanted && (
+                snowLuma.state.value.process != ProcessState.RUNNING || activeSnowBridge != QqPlatform.bridge(updated)
+            )
+            if (restartSnow) snowLuma.stop()
+            withContext(Dispatchers.IO) { bigFishSetup.prepare(updated, wanted) }
             check(preferences.edit().putBoolean("desired_ASTRBOT", true).commit()) { "配置保存失败，请检查剩余空间" }
             resumeAfterMaintenance(listOf(ServiceId.ASTRBOT), validateStartup = true)
             if (firstSetup) {
@@ -1077,12 +1103,13 @@ class RuntimeController(private val context: Context, private val scope: Corouti
                     ?: error("内置鲸语人设缺失，请重新安装完整包")
                 changePersona("persona-apply", preset.id)
             }
-            if (ServiceId.SNOWLUMA in wanted) resumeAfterMaintenance(listOf(ServiceId.SNOWLUMA), validateStartup = true)
+            if (restartSnow) resumeAfterMaintenance(listOf(ServiceId.SNOWLUMA), validateStartup = true)
             withContext(Dispatchers.IO) { bigFishSetup.commit() }
             updateState { it.copy(notice = "模型、鲸语人设和消息通道已配置，下一步登录 QQ") }
         } catch (failure: Throwable) {
             withContext(NonCancellable) {
-                supervisors.values.toList().reversed().forEach { it.stop() }
+                if (restartSnow) snowLuma.stop()
+                astrBot.stop()
                 if (personas.hasPendingChange) withContext(Dispatchers.IO) { personas.recover() }
                 withContext(Dispatchers.IO) { bigFishSetup.recover() }
                 // A stop persists the user's intent before cancellation. Never overwrite it.
@@ -1090,7 +1117,8 @@ class RuntimeController(private val context: Context, private val scope: Corouti
                 val edit = preferences.edit()
                 ServiceId.entries.forEach { edit.putBoolean("desired_${it.name}", it in restore) }
                 check(edit.commit()) { "原配置已经保留，但运行状态保存失败" }
-                if (restore.isNotEmpty() && failure !is CancellationException) resumeAfterMaintenance(restore.toList(), validateStartup = true)
+                val stopped = restore.filter { it == ServiceId.ASTRBOT || restartSnow }
+                if (stopped.isNotEmpty() && failure !is CancellationException) resumeAfterMaintenance(stopped, validateStartup = true)
             }
             throw failure
         }

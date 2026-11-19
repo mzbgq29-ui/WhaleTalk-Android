@@ -50,7 +50,7 @@ class BigFishSnowLuma(private val context: Context) {
         RuntimeStore.log(context, LogCategory.MANAGER).append("${java.time.Instant.now()} $message")
     }
 
-    suspend fun prepare(progress: (String, Float?) -> Unit) = withContext(Dispatchers.IO) {
+    internal suspend fun prepare(progress: (String, Float?) -> Unit): QqPlatform.Bridge = withContext(Dispatchers.IO) {
         fun report(message: String, fraction: Float? = null) {
             log(message)
             progress(message, fraction)
@@ -62,7 +62,7 @@ class BigFishSnowLuma(private val context: Context) {
         }
     }
 
-    private suspend fun prepareInner(report: (String, Float?) -> Unit) {
+    private suspend fun prepareInner(report: (String, Float?) -> Unit): QqPlatform.Bridge {
         val coroutine = currentCoroutineContext()
         check(runtime.abi == "arm64-v8a") { "此 SnowLuma 私用版本需要 ARM64 手机" }
         val desktop = DesktopRepository(context)
@@ -189,26 +189,24 @@ class BigFishSnowLuma(private val context: Context) {
         DurableFiles.write(File(state, "manager.json"), JSONObject().put("port", endpoint.port)
             .put("desktopGeometry", if (fullDesktopEnabled()) "1280x800" else "720x960"))
         Os.chmod(File(state, "manager.json").path, 384)
-        syncOneBot()
+        val bridge = syncOneBot()
         val script = context.assets.open("runtime/bigfish_snowluma.py").use { it.readBytes() }
         val launcher = File(root, "launch.py")
         if (!launcher.isFile || !launcher.readBytes().contentEquals(script)) { launcher.writeBytes(script); Os.chmod(launcher.path, 448) }
         val guard = QqHotUpdateGuard.applyIfLocked(context)
         guard?.message?.let { report(it, 0.98f) }
         report("SnowLuma 运行层已准备完成", 1f)
+        return bridge
     }
 
-    private fun syncOneBot() {
+    private fun syncOneBot(): QqPlatform.Bridge {
         val bot = JSONObject(File(context.filesDir, "persistent/astrbot/data/cmd_config.json").readText())
-        val platforms = bot.optJSONArray("platform") ?: JSONArray()
-        val platform = (0 until platforms.length()).mapNotNull { platforms.optJSONObject(it) }
-            .firstOrNull { QqPlatform.matches(it.optString("id")) && it.optString("type") == "aiocqhttp" }
+        val bridge = QqPlatform.bridge(bot)
             ?: error("请先完成机器人设置，创建本机 QQ 消息通道")
-        val port = platform.optInt("ws_reverse_port", 6199)
-        check(port in 1024..65535)
-        val client = JSONObject().put("name", "WhaleTalk-AstrBot").put("enabled", platform.optBoolean("enable", true))
-            .put("url", "ws://127.0.0.1:$port/ws").put("role", "Universal")
-            .put("accessToken", platform.optString("ws_reverse_token")).put("messageFormat", "array")
+        check(bridge.port in 1024..65535)
+        val client = JSONObject().put("name", "WhaleTalk-AstrBot").put("enabled", bridge.enabled)
+            .put("url", "ws://127.0.0.1:${bridge.port}/ws").put("role", "Universal")
+            .put("accessToken", bridge.token).put("messageFormat", "array")
             .put("reportSelfMessage", false).put("reconnectIntervalMs", 5000)
         val configDir = File(state, "config").apply { mkdirs() }
         val files = (listOf(File(configDir, "onebot.json")) + configDir.listFiles().orEmpty()
@@ -227,6 +225,7 @@ class BigFishSnowLuma(private val context: Context) {
                 if (document.optString("mode") == "snapshot") null else inheritedStatus))
             DurableFiles.write(file, document); Os.chmod(file.path, 384)
         }
+        return bridge
     }
 
     fun password(): String = File(state, "bootstrap-password").readText().trim()
