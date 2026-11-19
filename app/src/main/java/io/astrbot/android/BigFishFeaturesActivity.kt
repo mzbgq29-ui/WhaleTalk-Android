@@ -131,7 +131,7 @@ class BigFishFeaturesActivity : ComponentActivity() {
                     }
                 }
                 }
-                OutlinedTextField(query, { query = it.take(80) }, Modifier.fillMaxWidth().glassMaterial(), label = { Text("搜索功能") }, singleLine = true,
+                OutlinedTextField(query, { query = it.take(80) }, Modifier.fillMaxWidth(), label = { Text("搜索功能") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { keyboard?.hide() }),
                     trailingIcon = { if (query.isNotEmpty()) TextButton(onClick = { query = "" }) { Text("清空") } })
                 if (!imeVisible) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {

@@ -41,7 +41,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
         val stroke = Stroke(1.8f * unit)
         fun point(x: Float, y: Float) = Offset(x * unit, y * unit)
         when (kind) {
-            "鲸鱼" -> {
+            "运行" -> {
                 val path = Path().apply { moveTo(3*unit,9*unit); cubicTo(4*unit,17*unit,14*unit,20*unit,19*unit,12*unit)
                     lineTo(22*unit,6*unit); lineTo(17*unit,8*unit); cubicTo(8*unit,4*unit,4*unit,6*unit,3*unit,9*unit); close() }
                 drawPath(path, color, style = stroke); drawCircle(color, 1*unit, point(7f,9f))
@@ -51,8 +51,14 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
                 for (x in listOf(8f,12f,16f)) drawCircle(color,unit,point(x,10f)) }
             "工具" -> for (x in listOf(3f,14f)) for (y in listOf(3f,14f))
                 drawRoundRect(color, point(x,y), Size(7*unit,7*unit), CornerRadius(2*unit), style=stroke)
-            "我的" -> { drawCircle(color,4*unit,point(12f,7f),style=stroke)
-                drawArc(color,180f,180f,false,point(4f,14f),Size(16*unit,13*unit),style=stroke) }
+            "设置" -> {
+                drawCircle(color, 7 * unit, point(12f, 12f), style = stroke)
+                drawCircle(color, 2.5f * unit, point(12f, 12f), style = stroke)
+                for ((x, y) in listOf(0f to 1f, 1f to 0f, 0f to -1f, -1f to 0f,
+                    .707f to .707f, -.707f to .707f, .707f to -.707f, -.707f to -.707f)) {
+                    drawLine(color, point(12f + 7 * x, 12f + 7 * y), point(12f + 10 * x, 12f + 10 * y), 1.8f * unit)
+                }
+            }
             else -> { drawCircle(color,8*unit,point(12f,12f),style=stroke)
                 drawLine(color,point(8f,12f),point(16f,12f),1.8f*unit); drawLine(color,point(12f,8f),point(12f,16f),1.8f*unit) }
         }
@@ -61,24 +67,24 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 
 @Composable internal fun StudioCard(title: String? = null, subtitle: String? = null, accent: Boolean = false,
     modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    LiquidPanel(modifier.fillMaxWidth().animateContentSize(), accent = accent) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            if (title != null) Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            content()
-        }
+    Column(
+        modifier.fillMaxWidth()
+            .then(if (accent) Modifier.background(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.shapes.medium).padding(16.dp) else Modifier),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (title != null) Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        content()
     }
 }
 
 @Composable internal fun StudioTile(title: String, subtitle: String, onClick: () -> Unit, badge: String? = null) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).clickable(onClick = onClick).heightIn(min = 76.dp).padding(horizontal = 8.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        Box(Modifier.size(42.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
-            Text(title.take(1), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-        }
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).heightIn(min = 56.dp).padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(title, fontWeight = FontWeight.Medium)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         if (badge != null) Text(badge, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
         Text("›", fontSize = 24.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -96,7 +102,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
     }
     OutlinedTextField(value, onChange, Modifier.fillMaxWidth(), label = { Text(label) }, enabled = enabled,
         minLines = if (multiline) 4 else 1, maxLines = if (multiline) 12 else 1, singleLine = !multiline,
-        supportingText = if (hint == null) null else ({ Text(hint) }), shape = RoundedCornerShape(18.dp),
+        supportingText = if (hint == null) null else ({ Text(hint) }), shape = MaterialTheme.shapes.small,
         visualTransformation = if (secret && !reveal) PasswordVisualTransformation() else VisualTransformation.None,
         trailingIcon = if (!secret) null else ({ TextButton(onClick = { reveal = !reveal }) { Text(if (reveal) "隐藏" else "显示") } }),
         keyboardOptions = KeyboardOptions(keyboardType = if (secret) KeyboardType.Password else if (numeric) KeyboardType.Number else KeyboardType.Text,

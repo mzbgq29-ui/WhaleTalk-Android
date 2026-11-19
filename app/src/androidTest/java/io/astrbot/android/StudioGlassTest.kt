@@ -21,7 +21,7 @@ import org.junit.Rule
 import org.junit.Test
 import kotlin.math.abs
 
-/** Reproduces the reported defect: dark text behind a floating plane must not show through. */
+/** Panels and dialogs keep text beneath them from showing through. */
 class StudioGlassTest {
     @get:Rule val rule = createComposeRule()
 
@@ -42,7 +42,7 @@ class StudioGlassTest {
         assertTrue("Underlying text changed $changed of $total foreground pixels", changed < total * .003f)
     }
 
-    @Test fun floatingGlassDoesNotCopyUnderlyingText() {
+    @Test fun panelCoversUnderlyingText() {
         var underlay by mutableStateOf(false)
         rule.mainClock.autoAdvance = false
         rule.setContent {
@@ -56,22 +56,6 @@ class StudioGlassTest {
             }
         }
         compareUnderlay("plane") { underlay = true }
-    }
-
-    @Test fun missingSamplingLayerStillCoversUnderlyingText() {
-        var underlay by mutableStateOf(false)
-        rule.mainClock.autoAdvance = false
-        rule.setContent {
-            BigFishTheme {
-                CompositionLocalProvider(LocalBigFishBackdrop provides null) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        if (underlay) Text("MMMMMMMM\nMMMMMMMM\nMMMMMMMM", color = Color.Black, fontSize = 36.sp)
-                        LiquidPanel(Modifier.size(300.dp,200.dp).testTag("fallback")) { Text("采样未就绪", Modifier.padding(20.dp)) }
-                    }
-                }
-            }
-        }
-        compareUnderlay("fallback") { underlay = true }
     }
 
     @Test fun dialogHasItsOwnReadableForeground() {

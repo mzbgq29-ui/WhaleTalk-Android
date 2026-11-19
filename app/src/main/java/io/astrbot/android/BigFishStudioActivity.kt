@@ -61,6 +61,7 @@ open class BigFishStudioActivity : ComponentActivity() {
         super.onCreate(savedInstanceState); firstCreation = savedInstanceState == null; enableEdgeToEdge()
         setContent { BigFishTheme { StudioApp(model, ::command) { if (isTaskRoot) moveTaskToBack(true) else finish() } } }
     }
+    @OptIn(ExperimentalMaterial3Api::class)
     @Composable private fun StudioApp(vm: StudioModel, command: (String, ServiceId?) -> Unit, exit: () -> Unit) {
         val state by RuntimeStore.state.collectAsStateWithLifecycle()
         val keyboard = WindowInsets.ime.getBottom(LocalDensity.current) > 0
@@ -90,38 +91,60 @@ open class BigFishStudioActivity : ComponentActivity() {
         LaunchedEffect(Unit) {
             withContext(Dispatchers.IO) { runCatching { AppUpdateChecker(context).checkIfDue() } }
         }
-        LaunchedEffect(state.completedOperation) {
-            if (state.completedOperation != null && state.completedOperation == vm.configRequest && !state.busy && state.error == null) {
-                vm.configRequest = null; vm.reload(); vm.go(StudioPage.QQ); vm.notice = "配置已保存，现在可以登录 QQ"
-            }
+        LaunchedEffect(state.completedOperation, state.busy) {
+            if (!state.busy) vm.onConfigOperationCompleted(state.completedOperation, state.error == null)
         }
-        Scaffold(containerColor = Color.Transparent, topBar = {
-            Column(Modifier.statusBarsPadding().padding(horizontal = 18.dp).padding(top = 8.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(Modifier.fillMaxWidth().heightIn(min = 58.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (!root) TextButton(onClick = { if (!vm.back()) vm.go(StudioPage.HOME, true) }, Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) { Text("‹", fontSize = 32.sp) }
-                    Column(Modifier.weight(1f)) {
-                        Text(if (root) "WHALETALK  /  mzbgq" else vm.page.section, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                        Text(vm.page.title, fontSize = if (root) 30.sp else 25.sp, fontWeight = FontWeight.Bold)
+        vm.configPreview?.let { preview ->
+            val running = state.services.getValue(ServiceId.ASTRBOT).desiredRunning
+            AlertDialog(
+                onDismissRequest = vm::closeConfigPreview,
+                title = { Text("应用设置") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("改动：" + preview.changes.joinToString("、"))
+                        Text(when {
+                            preview.firstSetup -> "首次配置会启动 AstrBot。QQ 消息通道需要更新时，正在运行的 QQ 服务也会重启。"
+                            running -> "现在应用会重启 AstrBot，QQ 继续运行。"
+                            else -> "现在应用会保存设置，服务保持停止。"
+                        })
+                        if (!preview.firstSetup) {
+                            TextButton(onClick = { vm.confirmConfig(deferred = true) }, enabled = !state.busy) {
+                                Text("下次启动时应用")
+                            }
+                        }
                     }
-                    if (root) StudioMascot(Modifier.size(48.dp).clickable { vm.go(StudioPage.ABOUT) })
-                }
-                if (vm.busy || state.busy) StudioCard {
+                },
+                confirmButton = {
+                    TextButton(onClick = { vm.confirmConfig(deferred = false) }, enabled = !state.busy) { Text("现在应用") }
+                },
+                dismissButton = { TextButton(onClick = vm::closeConfigPreview) { Text("取消") } },
+            )
+        }
+        Scaffold(topBar = {
+            Column {
+                TopAppBar(
+                    title = { Text(if (vm.page == StudioPage.HOME) "鲸语" else vm.page.title) },
+                    navigationIcon = {
+                        if (!root) TextButton(onClick = { if (!vm.back()) vm.go(StudioPage.HOME, true) }) { Text("‹ 返回") }
+                    },
+                )
+                if (vm.busy || state.busy) Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
                     PrepareProgressBar(state, fallback = if (vm.busy) vm.task else state.phase, saving = vm.busy)
-                    TextButton(onClick = { if (vm.busy) vm.cancel() else command("stop", null) }) { Text(if (vm.busy) "取消当前操作" else "取消任务并停止服务") }
+                    TextButton(onClick = { if (vm.busy) vm.cancel() else command("stop", null) }) {
+                        Text(if (vm.busy) "取消当前操作" else "取消任务并停止服务")
+                    }
                 }
             }
         }, bottomBar = {
-            if (root && !keyboard) LiquidPanel(Modifier.navigationBarsPadding().padding(horizontal = 20.dp, vertical = 10.dp), RoundedCornerShape(32.dp)) {
-                Row(Modifier.fillMaxWidth().padding(7.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            if (root && !keyboard) {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
                     roots.forEach { page ->
-                        val selected = vm.page == page
-                        Column(Modifier.weight(1f).clip(RoundedCornerShape(26.dp))
-                            .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-                            .clickable { vm.go(page, true) }.padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            StudioGlyph(page.title, color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(page.title, style = MaterialTheme.typography.labelSmall, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
-                        }
+                        NavigationBarItem(
+                            selected = vm.page == page,
+                            onClick = { vm.go(page, true) },
+                            icon = { StudioGlyph(page.title, color = LocalContentColor.current) },
+                            label = { Text(page.title) },
+                        )
                     }
                 }
             }
@@ -169,49 +192,62 @@ open class BigFishStudioActivity : ComponentActivity() {
     val qq = state.services.getValue(ServiceId.SNOWLUMA)
     val bot = state.services.getValue(ServiceId.ASTRBOT)
     val online = qq.qq == QqState.ONLINE && qq.oneBot == OneBotState.CONNECTED && qq.ready && bot.ready
-    StudioCard(accent = true) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(if (online) "鲸鱼在，\n随时聊聊。" else "今天也，\n有我在。", fontSize = 26.sp, lineHeight = 35.sp, fontWeight = FontWeight.Bold)
-                Text(if (online) "QQ 已连接，去打个招呼吧。" else "让她上线，或者先在这里聊聊。", style = MaterialTheme.typography.bodySmall)
-            }
-            StudioMascot(Modifier.size(if (LocalBigFishCompact.current) 80.dp else 112.dp))
-        }
-        LiquidButton(onClick = { command(if (state.services.values.any { it.desiredRunning }) "stop" else "start", null) },
-            Modifier.fillMaxWidth(), enabled = state.componentsReady && !state.busy && !vm.busy) {
-            Text(if (state.services.values.any { it.desiredRunning }) "暂停陪伴" else "让鲸鱼上线")
+    val reconnect by AutoReconnectStore.state.collectAsStateWithLifecycle()
+    val running = state.services.values.any { it.desiredRunning }
+    val needsSetup = !state.componentsReady || !vm.configured
+    val enabled = !state.busy && !vm.busy && vm.loaded
+    val overview = when {
+        online -> "机器人已连接"
+        !vm.loaded -> "正在读取状态"
+        !state.componentsReady -> "请先准备运行环境"
+        !vm.configured -> "请先配置云端模型"
+        !running -> "服务未启动"
+        reconnect.exhausted -> "自动重连已暂停"
+        qq.qq == QqState.VERIFICATION_REQUIRED -> "QQ 需要验证"
+        qq.qq == QqState.LOGGED_OUT -> "QQ 需要登录"
+        else -> "正在等待连接"
+    }
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.medium) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Text(overview, style = MaterialTheme.typography.titleLarge)
+            StudioTile("QQ 登录", qqAccountLabel(state, qq), { vm.go(StudioPage.QQ) })
+            HorizontalDivider()
+            val channel = if (reconnect.delayMillis != null) "等待第 ${reconnect.attempt} 次重连" else channelLabel(state, qq)
+            StudioTile("消息通道", channel, { vm.go(StudioPage.DIAGNOSTICS) })
+            HorizontalDivider()
+            StudioTile("云端模型", if (vm.configured) vm.model else "尚未配置", { vm.go(StudioPage.MODEL) })
         }
     }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        LiquidButton(onClick = {
+            if (needsSetup && !running) vm.go(StudioPage.SETUP) else command(if (running) "stop" else "start", null)
+        }, Modifier.weight(1f), enabled = enabled) {
+            Text(if (running) "停止服务" else if (needsSetup) "开始设置" else "启动服务")
+        }
+        TextButton(onClick = { vm.go(StudioPage.DIAGNOSTICS) }) { Text("为什么没回复？") }
+    }
+    StudioPendingConfig(vm, enabled)
+    StudioTile("运行详情", "组件状态、资源用量和启停", { vm.go(StudioPage.SERVICES) })
+    HorizontalDivider()
+    StudioTile("回复规则", "允许名单和唤醒方式", { vm.go(StudioPage.ACCESS) })
     StudioHomeUpdateBanner()
-    if (!state.componentsReady || !vm.configured) StudioCard {
-        StudioTile("完成初次设置", "准备环境、连接模型，再登录 QQ。", { vm.go(StudioPage.SETUP) })
+}
+
+@Composable private fun StudioPendingConfig(vm: StudioModel, enabled: Boolean) {
+    if (!vm.pendingConfig) return
+    StudioCard("有待应用的设置", accent = true) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(vm::applyPendingConfig, enabled = enabled) { Text("现在应用") }
+            TextButton(vm::discardPendingConfig, enabled = enabled) { Text("丢弃草稿") }
+        }
     }
-    if (state.busy || qq.desiredRunning) StartupChecklist(state, qq, vm.configured)
-    StudioCard("连接一览") {
-        StudioStatus("QQ 账号", qqAccountLabel(state, qq), qq.qq == QqState.ONLINE)
-        StudioStatus("消息通道", channelLabel(state, qq), qq.oneBot == OneBotState.CONNECTED)
-        StudioStatus("云端模型", if (vm.configured) vm.model else "尚未配置", vm.configured)
-        StudioTile("QQ 登录与连接", "打开登录画面，处理验证或重新登录", { vm.go(StudioPage.QQ) })
-    }
-    StudioRuntimeDashboard(state, qq, bot)
-    StudioCard("常用") {
-        StudioTile("和她聊聊", "在手机上直接开始一段对话", { vm.go(StudioPage.CHAT, true) })
-        StudioTile("回应方式", "谁能聊天、群聊怎么唤醒", { vm.go(StudioPage.ACCESS) })
-        StudioTile("人设与性格", "鲸语，或你亲手写下的性格", { vm.go(StudioPage.PERSONAS) })
-    }
-    Text("本机运行 · 云端思考 · mzbgq", Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable private fun StudioSetup(vm: StudioModel, state: ManagerState, command: (String, ServiceId?) -> Unit) {
     val context = LocalContext.current
     val arm = Build.SUPPORTED_ABIS.contains("arm64-v8a")
     val space = context.filesDir.usableSpace / (1024.0 * 1024 * 1024)
-    StudioCard(accent = true) {
-        StudioMascot(Modifier.size(84.dp))
-        Text("给鲸鱼安个家。", fontSize = 30.sp, fontWeight = FontWeight.Bold)
-        Text("只需三步，其余交给鲸语。")
-    }
-    StudioCard("01  准备小窝", "首次解压需要一些时间，请保持应用在前台。") {
+    StudioCard("准备运行环境", "首次解压时请保持应用在前台。") {
         StudioStatus("运行环境", if (state.componentsReady) "已准备" else "待准备", state.componentsReady)
         StudioStatus("手机架构", if (arm) "ARM64" else "当前架构不支持", arm)
         StudioStatus("剩余空间", String.format(java.util.Locale.ROOT, "%.1f GB", space), space >= 3)
@@ -220,18 +256,19 @@ open class BigFishStudioActivity : ComponentActivity() {
             Text(if (state.componentsReady) "重新检查环境" else "准备环境")
         }
     }
-    StudioCard("02  连接思考", "使用你的云端模型 API，不在手机上加载大模型。") {
+    StudioCard("配置云端模型") {
         StudioTile("主人和模型", "填写主人 QQ、服务商与 API Key", { vm.go(StudioPage.MODEL) }, if (vm.configured) "已配置" else null)
     }
-    StudioCard("03  认识 QQ", "登录机器人的 QQ 小号，再用主人 QQ 与她聊天。") {
+    StudioCard("登录机器人 QQ") {
         StudioTile("登录 QQ", "登录画面直接显示在应用中", { vm.go(StudioPage.QQ) })
     }
-    LiquidOutlinedButton(onClick = { vm.go(StudioPage.HOME, true) }, Modifier.fillMaxWidth()) { Text("进入鲸鱼首页") }
+    LiquidOutlinedButton(onClick = { vm.go(StudioPage.HOME, true) }, Modifier.fillMaxWidth()) { Text("返回运行页") }
 }
 
 @Composable private fun StudioModelPage(vm: StudioModel, state: ManagerState) {
     val enabled = !vm.busy && !state.busy
-    StudioCard("主人", "这里填你日常使用的 QQ 大号，机器人小号稍后登录。") {
+    StudioPendingConfig(vm, enabled)
+    StudioCard("账号") {
         StudioField(vm.owner, { vm.owner = it.take(20) }, "主人 QQ 号", numeric = true, enabled = enabled)
     }
     StudioCard("云端模型", "兼容 Chat Completions 的服务均可手动配置。") {
@@ -259,8 +296,8 @@ open class BigFishStudioActivity : ComponentActivity() {
     }
     LiquidOutlinedButton(vm::testModel, Modifier.fillMaxWidth(), enabled = enabled) { Text("测试当前模型（不保存）") }
     Text("测试会发送一次短请求并显示耗时，可能产生少量费用。", style = MaterialTheme.typography.bodySmall)
-    LiquidButton(vm::saveConfig, Modifier.fillMaxWidth(), enabled = enabled && state.componentsReady && vm.loaded) { Text("验证连接并保存") }
-    if (!state.componentsReady) StudioEmpty("先准备运行环境", "返回初次设置，完成「准备小窝」后再保存模型。")
+    LiquidButton(vm::saveConfig, Modifier.fillMaxWidth(), enabled = enabled && state.componentsReady && vm.loaded) { Text("查看改动") }
+    if (!state.componentsReady) StudioEmpty("先准备运行环境", "在初次设置中完成环境准备后即可保存。")
     Text("云端调用由服务商计费。密钥不会出现在页面状态、日志导出或分享内容中。", style = MaterialTheme.typography.bodySmall)
 }
 
@@ -272,7 +309,8 @@ open class BigFishStudioActivity : ComponentActivity() {
         presetUndo = Triple(vm.friends, vm.groups, vm.options)
         apply(); selectedPreset = name
     }
-    StudioCard("懒人回应预设", "选择后会填好下面的选项，点击底部「保存并应用偏好」才生效。好友和群仍按允许名单回应。") {
+    StudioPendingConfig(vm, enabled)
+    StudioCard("回复预设", "选择预设后，可在保存前检查并修改草稿。") {
         LiquidOutlinedButton(onClick = {
             preset("只和主人聊") {
                 vm.friends = ""; vm.groups = ""
@@ -302,11 +340,42 @@ open class BigFishStudioActivity : ComponentActivity() {
         StudioField(vm.friends, { vm.friends = it }, "好友 QQ 号", multiline = true, enabled = enabled)
         StudioField(vm.groups, { vm.groups = it }, "允许的群号", multiline = true, enabled = enabled)
     }
-    StudioCard("怎么叫醒她") {
+    StudioCard("唤醒方式") {
         StudioField(vm.wakeWord, { vm.wakeWord = it }, "唤醒词", enabled = enabled)
         StudioOptionFields(vm, enabled)
     }
-    LiquidButton(vm::saveConfig, Modifier.fillMaxWidth(), enabled = enabled && state.componentsReady) { Text("保存并应用偏好") }
+    StudioReplyPreview(vm)
+    LiquidButton(vm::saveConfig, Modifier.fillMaxWidth(), enabled = enabled && state.componentsReady) { Text("查看改动") }
+}
+
+@Composable private fun StudioReplyPreview(vm: StudioModel) {
+    var group by rememberSaveable { mutableStateOf(true) }
+    var recipient by rememberSaveable { mutableStateOf("") }
+    var mentioned by rememberSaveable { mutableStateOf(false) }
+    var sample by rememberSaveable { mutableStateOf("") }
+    StudioCard("回复规则试算", "使用当前草稿检查允许名单与唤醒方式。") {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LiquidChoice(group, { group = true; recipient = "" }, { Text("群聊") })
+            LiquidChoice(!group, { group = false; recipient = "" }, { Text("私聊") })
+        }
+        StudioField(recipient, { recipient = it.take(20) }, if (group) "群号" else "好友 QQ 号", numeric = true)
+        StudioField(sample, { sample = it.take(160) }, "示例消息", hint = "可在开头输入唤醒词或 / 命令")
+        if (group) StudioSwitch("@机器人", "", mentioned) { mentioned = it }
+        if (recipient.isNotBlank()) {
+            val result = remember(group, recipient, mentioned, sample, vm.owner, vm.friends, vm.groups, vm.options, vm.wakeWord) {
+                runCatching {
+                    ReplyRulePreview.evaluate(vm.owner, vm.friends, vm.groups, vm.options.copy(wakeWord = vm.wakeWord.trim()),
+                        recipient.trim(), group, group && mentioned, sample)
+                }.getOrNull()
+            }
+            Text(when (result) {
+                ReplyRulePreview.Result.ALLOWED -> "允许回复"
+                ReplyRulePreview.Result.NOT_ALLOWED -> "未加入允许名单"
+                ReplyRulePreview.Result.NOT_AWAKENED -> "未满足唤醒条件"
+                null -> "请检查号码、允许名单与唤醒词的格式"
+            }, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
 }
 
 @Composable private fun StudioQQ(vm: StudioModel, state: ManagerState, command: (String, ServiceId?) -> Unit) {
@@ -409,29 +478,26 @@ open class BigFishStudioActivity : ComponentActivity() {
 @Composable private fun StudioTools(vm: StudioModel) {
     var query by rememberSaveable { mutableStateOf("") }
     StudioField(query, { query = it }, "搜索工具")
-    listOf("陪伴" to listOf(StudioPage.PERSONAS, StudioPage.PERSONA_LIBRARY, StudioPage.HISTORY, StudioPage.SESSIONS),
-        "能力" to listOf(StudioPage.COMPANIONS, StudioPage.CAPABILITIES, StudioPage.ENGINE, StudioPage.MODEL, StudioPage.PROVIDERS, StudioPage.PLUGINS, StudioPage.KNOWLEDGE, StudioPage.SCHEDULE),
-        "照料" to listOf(StudioPage.DIAGNOSTICS, StudioPage.STATS, StudioPage.SERVICES, StudioPage.BACKUP, StudioPage.LOGS, StudioPage.STORAGE),
-        "进阶" to listOf(StudioPage.TERMINAL, StudioPage.EXTENSIONS)).forEach { (title, pages) ->
+    listOf("模型与回复" to listOf(StudioPage.MODEL, StudioPage.ACCESS, StudioPage.PROVIDERS, StudioPage.HISTORY, StudioPage.SESSIONS, StudioPage.STATS),
+        "人设与插件" to listOf(StudioPage.PERSONAS, StudioPage.PERSONA_LIBRARY, StudioPage.COMPANIONS, StudioPage.PLUGINS, StudioPage.CAPABILITIES, StudioPage.KNOWLEDGE, StudioPage.SCHEDULE),
+        "日志与备份" to listOf(StudioPage.DIAGNOSTICS, StudioPage.SERVICES, StudioPage.LOGS, StudioPage.BACKUP, StudioPage.STORAGE),
+        "进阶" to listOf(StudioPage.ENGINE, StudioPage.TERMINAL, StudioPage.EXTENSIONS)).forEach { (title, pages) ->
         val visible = pages.filter { query.isBlank() || (it.title + it.section).contains(query.trim(), true) }
-        if (visible.isNotEmpty()) StudioCard(title) { visible.forEach { page -> StudioTile(page.title, page.section, { vm.go(page) }) } }
+        if (visible.isNotEmpty()) StudioCard(title) {
+            Column {
+                visible.forEachIndexed { index, page ->
+                    if (index > 0) HorizontalDivider()
+                    StudioTile(page.title, page.section, { vm.go(page) })
+                }
+            }
+        }
     }
 }
 
 @Composable private fun StudioMe(vm: StudioModel) {
-    StudioCard(accent = true) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-            StudioMascot(Modifier.size(76.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("鲸语", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text("有自己的小世界。", style = MaterialTheme.typography.bodySmall)
-                Text("作者  mzbgq", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
-            }
-        }
-    }
     StudioCard("偏好") {
-        listOf(StudioPage.APPEARANCE, StudioPage.ACCESS, StudioPage.BACKGROUND, StudioPage.ACCOUNT).forEach { p ->
-            StudioTile(p.title, if (p == StudioPage.APPEARANCE) "浅色、深色或跟随系统" else p.section, { vm.go(p) })
+        listOf(StudioPage.APPEARANCE, StudioPage.BACKGROUND, StudioPage.ACCOUNT).forEach { p ->
+            StudioTile(p.title, p.section, { vm.go(p) })
         }
     }
     StudioCard("更多") {
@@ -440,10 +506,13 @@ open class BigFishStudioActivity : ComponentActivity() {
 }
 
 @Composable private fun StudioServices(vm: StudioModel, state: ManagerState, command: (String, ServiceId?) -> Unit) {
+    val snow = state.services.getValue(ServiceId.SNOWLUMA)
+    val bot = state.services.getValue(ServiceId.ASTRBOT)
+    if (state.busy || snow.desiredRunning) StartupChecklist(state, snow, vm.configured)
     ServiceId.entries.forEach { id ->
         val status = state.services.getValue(id)
         StudioCard(if (id == ServiceId.ASTRBOT) "思考引擎" else "QQ 连接", if (id == ServiceId.ASTRBOT) "AstrBot" else "SnowLuma 2.4.2 · Linux QQ") {
-            StudioStatus("当前状态", if (status.ready) "运行中" else if (status.desiredRunning) "正在启动" else "已停止", status.ready)
+            StudioStatus("当前状态", layerLabel(status), status.ready)
             state.versions[id.label]?.let { StudioStatus("组件版本", it) }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 LiquidButton(onClick = { command(if (status.desiredRunning) "stop" else "start", id) }, Modifier.weight(1f), enabled = !state.busy && state.componentsReady) { Text(if (status.desiredRunning) "停止" else "启动") }
@@ -451,6 +520,7 @@ open class BigFishStudioActivity : ComponentActivity() {
             }
         }
     }
+    StudioRuntimeDashboard(state, snow, bot)
     StudioCard {
         StudioTile("查看日志", "启动失败、掉线与配置问题", { vm.go(StudioPage.LOGS) })
         StudioTile("初次设置", "准备环境和连接模型", { vm.go(StudioPage.SETUP) })
@@ -522,16 +592,13 @@ private fun channelLabel(state: ManagerState, qq: ServiceStatus): String = when 
     val reconnect by AutoReconnectStore.state.collectAsStateWithLifecycle()
     val exempt = remember { context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName) }
     val colorOs = listOf(Build.MANUFACTURER, Build.BRAND, Build.FINGERPRINT).any { it.contains("oneplus", true) || it.contains("oppo", true) || it.contains("realme", true) }
-    StudioCard("运行状态", "只显示本机实际测到的数据，没有的项目不会编造。") {
+    StudioCard("资源用量") {
         val memoryBytes = (resources.memory.totalKiB ?: resources.memory.partialKiB)?.times(1024)
         StudioStatus("CPU", resources.cpuPercent?.let { String.format(java.util.Locale.CHINA, "约 %.1f%%", it) } ?: "测量中", resources.cpuPercent != null)
         StudioStatus("内存", memoryBytes?.let { Formatter.formatShortFileSize(context, it) } ?: "测量中", memoryBytes != null)
         val uptime = state.runtimeStartedAtElapsed?.let { SystemClock.elapsedRealtime() - it }?.takeIf { it >= 0 }
         StudioStatus("运行时长", uptime?.let { formatUptime(it) } ?: "未运行", uptime != null)
         StudioStatus("Ubuntu 环境", if (state.componentsReady) "已就绪" else if (state.environmentInstalled) "基础已安装" else "未准备", state.componentsReady)
-        StudioStatus("SnowLuma", layerLabel(qq), qq.ready)
-        StudioStatus("Linux QQ", qqAccountLabel(state, qq), qq.qq == QqState.ONLINE)
-        StudioStatus("AstrBot", layerLabel(bot), bot.ready)
         val retryDelay = reconnect.delayMillis
         if (reconnect.exhausted) Text("自动重连已暂停：${reconnect.layer ?: "服务"}多次恢复失败，请手动检查。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         else if (retryDelay != null) Text("正在自动重连${reconnect.layer ?: ""}（第 ${reconnect.attempt} 次，约 ${retryDelay / 1000} 秒后重试）。", style = MaterialTheme.typography.bodySmall)

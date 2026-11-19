@@ -102,6 +102,18 @@ class BigFishConfigTest {
         platform.put("ws_reverse_token", token).put("enable", false)
         assertNotEquals(bridge, QqPlatform.bridge(original))
     }
+    @Test fun preferencesKeepTheCustomBridgeAndExistingProviderConnection() {
+        val original = BigFishConfig.astrbot(JSONObject(), input, token)
+        val bridge = requireNotNull(QqPlatform.configuration(original))
+        bridge.put("ws_reverse_port", 6200).put("ws_reverse_token", "configured-token").put("enable", false)
+        val originalSource = original.getJSONArray("provider_sources").getJSONObject(0)
+        originalSource.put("timeout", 42)
+
+        val updated = BigFishConfig.astrbot(original, input, token, preferencesOnly = true, firstSetup = false)
+
+        assertEquals(QqPlatform.bridge(original), QqPlatform.bridge(updated))
+        assertEquals(42, updated.getJSONArray("provider_sources").getJSONObject(0).getInt("timeout"))
+    }
     @Test fun rejectsInvalidPairingSecret() {
         assertThrows(IllegalArgumentException::class.java) { BigFishConfig.astrbot(JSONObject(), input, "") }
     }

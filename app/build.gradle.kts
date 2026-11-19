@@ -261,7 +261,6 @@ tasks.register("collectReleaseDependencyMetadata") {
 dependencies {
     implementation(project(":core"))
     implementation(platform("androidx.compose:compose-bom:2025.04.01"))
-    implementation("io.github.kyant0:backdrop:1.0.0")
     implementation("androidx.compose.ui:ui:1.9.4")
     implementation("androidx.compose.foundation:foundation:1.9.4")
     implementation("androidx.activity:activity-compose:1.10.1")

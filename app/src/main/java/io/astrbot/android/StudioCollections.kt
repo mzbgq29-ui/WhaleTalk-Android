@@ -30,8 +30,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 @Composable internal fun StudioOptionFields(vm: StudioModel, enabled: Boolean) {
-    StudioSwitch("私聊也需要唤醒", "开启后，私聊使用 / 前缀触发", vm.options.friendNeedsWake, enabled) { vm.options = vm.options.copy(friendNeedsWake = it) }
-    StudioSwitch("群聊仅 @ 回应", "关闭后也能通过唤醒词触发", vm.options.groupMentionOnly, enabled) { vm.options = vm.options.copy(groupMentionOnly = it) }
+    StudioSwitch("私聊也需要唤醒", "使用唤醒词或 / 命令触发私聊回复。", vm.options.friendNeedsWake, enabled) { vm.options = vm.options.copy(friendNeedsWake = it) }
+    StudioSwitch("关闭文字唤醒", "使用 @、引用机器人消息或 / 命令。", vm.options.groupMentionOnly, enabled) { vm.options = vm.options.copy(groupMentionOnly = it) }
     StudioSwitch("引用原消息", "回复时附上对应的原消息", vm.options.replyWithQuote, enabled) { vm.options = vm.options.copy(replyWithQuote = it) }
     StudioSwitch("群回复时 @ 对方", "让对方更容易看到回复", vm.options.replyWithMention, enabled) { vm.options = vm.options.copy(replyWithMention = it) }
     StudioSwitch("图片理解", "需要你选择的云端模型支持视觉", vm.options.vision, enabled) { vm.options = vm.options.copy(vision = it) }
@@ -53,32 +53,34 @@ import org.json.JSONObject
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("只在这里聊，也可以。", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+            Text("本机对话", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
             TextButton(onClick = { vm.session = ""; vm.messages.clear() }, enabled = !vm.chatting && !vm.stoppingChat) { Text("新对话") }
         }
         if (vm.messages.isEmpty()) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                StudioMascot(Modifier.size(128.dp))
-                Text("想聊什么？", fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                Text("回复来自你设置的模型和人设。", style = MaterialTheme.typography.bodySmall)
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                StudioMascot(Modifier.size(68.dp))
+                Text("发送一条消息开始聊天", style = MaterialTheme.typography.bodyMedium)
             }
         } else LazyColumn(Modifier.weight(1f), state = scroll, contentPadding = PaddingValues(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             itemsIndexed(vm.messages) { _, item ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (item.mine) Arrangement.End else Arrangement.Start) {
-                    Surface(Modifier.widthIn(max = 420.dp).fillMaxWidth(if (item.mine) .88f else .95f),
-                        shape = RoundedCornerShape(24.dp, 24.dp, if (item.mine) 6.dp else 24.dp, if (item.mine) 24.dp else 6.dp),
-                        color = if (item.mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface) {
-                        SelectionContainer { Text(item.text.ifBlank { "正在想…" }, Modifier.padding(18.dp), lineHeight = 25.sp) }
+                    Surface(Modifier.widthIn(max = 420.dp).fillMaxWidth(.84f),
+                        shape = RoundedCornerShape(16.dp, 16.dp, if (item.mine) 4.dp else 16.dp, if (item.mine) 16.dp else 4.dp),
+                        color = if (item.mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow) {
+                        SelectionContainer { Text(item.text.ifBlank { "等待回复…" }, Modifier.padding(12.dp)) }
                     }
                 }
             }
         }
-        Surface(shape = RoundedCornerShape(26.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 10.dp)) {
-            Column(Modifier.padding(12.dp)) {
-                StudioField(vm.chatDraft, { vm.chatDraft = it }, "和鲸鱼说点什么", enabled = !vm.chatting && !vm.stoppingChat)
-                LiquidButton(onClick = { if (vm.chatting) vm.stopChat() else vm.send() }, Modifier.fillMaxWidth(), enabled = !vm.stoppingChat && (vm.chatting || vm.chatDraft.isNotBlank())) {
-                    Text(if (vm.stoppingChat) "正在停止…" else if (vm.chatting) "停止回复" else "发送")
-                }
+        HorizontalDivider()
+        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) {
+                StudioField(vm.chatDraft, { vm.chatDraft = it }, "输入消息", enabled = !vm.chatting && !vm.stoppingChat)
+            }
+            LiquidButton(onClick = { if (vm.chatting) vm.stopChat() else vm.send() },
+                enabled = !vm.stoppingChat && (vm.chatting || vm.chatDraft.isNotBlank())) {
+                Text(if (vm.stoppingChat) "正在停止…" else if (vm.chatting) "停止回复" else "发送")
             }
         }
     }

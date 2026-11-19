@@ -86,6 +86,7 @@ class RuntimeService : Service() {
                 if (operations.isEmpty() && idle()) stopSelf(startId)
                 return START_STICKY
             }
+            controller.cancelAutomaticReconnect()
         }
         val previous = if (action == "stop") operations.toList() else emptyList()
         previous.forEach { it.cancel() }

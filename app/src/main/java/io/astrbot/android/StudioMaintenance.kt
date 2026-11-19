@@ -263,18 +263,13 @@ import java.util.zip.ZipInputStream
     val context = LocalContext.current
     val preferences = remember { context.getSharedPreferences("bigfish-ui", 0) }
     var theme by remember { mutableStateOf(preferences.getString("theme", "system")) }
-    var motion by remember { mutableStateOf(preferences.getBoolean("ocean_motion", false)) }
-    var dynamicColor by remember { mutableStateOf(preferences.getBoolean("dynamic_color", true)) }
-    StudioCard("光与颜色", "玻璃只折射装饰背景，文字和弹窗使用独立清晰层。鲸鱼蓝绿作为主色保留。") {
-        listOf("system" to "跟随系统", "light" to "浅色海面", "dark" to "深色海底").forEach { (id, label) ->
+    var dynamicColor by remember { mutableStateOf(preferences.getBoolean("dynamic_color", false)) }
+    StudioCard("主题") {
+        listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色").forEach { (id, label) ->
             LiquidChoice(theme == id, { theme = id; preferences.edit().putString("theme", id).apply() }, { Text(label) }, Modifier.fillMaxWidth())
         }
-        Text("Android 13 及以上显示边缘折射；Android 12 使用模糊，较早版本使用稳定的玻璃配色。", style = MaterialTheme.typography.bodySmall)
-        if (android.os.Build.VERSION.SDK_INT >= 31) StudioSwitch("跟随壁纸颜色", "仅用于背景和表面。按钮和强调色仍使用鲸语的蓝与青绿，保持品牌识别。", dynamicColor) { value ->
+        if (android.os.Build.VERSION.SDK_INT >= 31) StudioSwitch("跟随壁纸颜色", "用于页面背景和表面。", dynamicColor) { value ->
             dynamicColor = value; preferences.edit().putBoolean("dynamic_color", value).apply()
-        }
-        StudioSwitch("动态海洋背景", "默认关闭以减少持续重绘和耗电，静态背景仍保留玻璃质感。", motion) { value ->
-            motion = value; preferences.edit().putBoolean("ocean_motion", value).apply()
         }
     }
 }

@@ -5,7 +5,7 @@ import android.app.Activity
 import android.os.Build
 import androidx.core.view.WindowCompat
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
@@ -18,54 +18,45 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
 @Composable internal fun BigFishTheme(content: @Composable (Boolean) -> Unit) {
     val context = LocalContext.current
     val preferences = remember { context.getSharedPreferences("bigfish-ui", 0) }
     var selection by remember { mutableStateOf(preferences.getString("theme", "system")) }
-    var motion by remember { mutableStateOf(preferences.getBoolean("ocean_motion", false)) }
-    var dynamicColor by remember { mutableStateOf(preferences.getBoolean("dynamic_color", true)) }
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    var resumed by remember { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
-    DisposableEffect(lifecycle, preferences) {
+    var dynamicColor by remember { mutableStateOf(preferences.getBoolean("dynamic_color", false)) }
+    DisposableEffect(preferences) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key == "theme") selection = preferences.getString("theme", "system")
-            if (key == "ocean_motion") motion = preferences.getBoolean("ocean_motion", false)
-            if (key == "dynamic_color") dynamicColor = preferences.getBoolean("dynamic_color", true)
+            if (key == "dynamic_color") dynamicColor = preferences.getBoolean("dynamic_color", false)
         }
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                resumed = true; selection = preferences.getString("theme", "system")
-                motion = preferences.getBoolean("ocean_motion", false)
-                dynamicColor = preferences.getBoolean("dynamic_color", true)
-            }
-            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) resumed = false
-        }
-        preferences.registerOnSharedPreferenceChangeListener(listener); lifecycle.addObserver(observer)
-        onDispose { preferences.unregisterOnSharedPreferenceChangeListener(listener); lifecycle.removeObserver(observer) }
+        preferences.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
     }
     val dark = when (selection) { "dark" -> true; "light" -> false; else -> isSystemInDarkTheme() }
     SideEffect {
         (context as? Activity)?.window?.let { window ->
             window.statusBarColor = android.graphics.Color.TRANSPARENT
-            window.navigationBarColor = if (dark) 0xFF0C1422.toInt() else 0xFFF3F6FC.toInt()
+            window.navigationBarColor = android.graphics.Color.TRANSPARENT
             WindowCompat.getInsetsController(window, window.decorView).apply {
                 isAppearanceLightStatusBars = !dark
                 isAppearanceLightNavigationBars = !dark
             }
         }
     }
-    val whaleDark = darkColorScheme(primary = Color(0xFFA2B8FF), secondary = Color(0xFF70DDD0),
-        background = Color(0xFF0C1422), surface = Color(0xFF152135), surfaceVariant = Color(0xFF1D2B40),
-        surfaceContainerLow = Color(0xFF152135), surfaceContainer = Color(0xFF1D2B40), surfaceContainerHigh = Color(0xFF24324B))
-    val whaleLight = lightColorScheme(primary = Color(0xFF425CB6), secondary = Color(0xFF087E78), background = Color(0xFFF3F6FC),
-        surface = Color(0xFFFCFDFF), surfaceVariant = Color(0xFFE9EFF9),
-        surfaceContainerLow = Color(0xFFF6F8FF), surfaceContainer = Color(0xFFF3F6FC), surfaceContainerHigh = Color(0xFFE7EDFA))
+    val whaleDark = darkColorScheme(primary = Color(0xFF81D1EA), onPrimary = Color(0xFF003544),
+        primaryContainer = Color(0xFF204553), onPrimaryContainer = Color(0xFFB5EBFA),
+        secondary = Color(0xFFAFCBD4), onSecondary = Color(0xFF1B343C),
+        secondaryContainer = Color(0xFF30464D), onSecondaryContainer = Color(0xFFCCEBF3),
+        background = Color(0xFF15191B), surface = Color(0xFF15191B), onSurface = Color(0xFFE3E7E9),
+        surfaceContainerLow = Color(0xFF1C2225), surfaceContainer = Color(0xFF20272A), surfaceContainerHigh = Color(0xFF283033),
+        surfaceVariant = Color(0xFF30393D), onSurfaceVariant = Color(0xFFC0CCD1), outline = Color(0xFF85949A), outlineVariant = Color(0xFF3D494D))
+    val whaleLight = lightColorScheme(primary = Color(0xFF17617A), onPrimary = Color.White,
+        primaryContainer = Color(0xFFD7EFF7), onPrimaryContainer = Color(0xFF133B49),
+        secondary = Color(0xFF48636D), onSecondary = Color.White,
+        secondaryContainer = Color(0xFFE2EEF2), onSecondaryContainer = Color(0xFF233B44),
+        background = Color(0xFFF9FAFA), surface = Color(0xFFF9FAFA), onSurface = Color(0xFF192225),
+        surfaceContainerLow = Color(0xFFF2F5F6), surfaceContainer = Color(0xFFECF1F3), surfaceContainerHigh = Color(0xFFE5ECEF),
+        surfaceVariant = Color(0xFFE8EFF1), onSurfaceVariant = Color(0xFF48585E), outline = Color(0xFF6E7D83), outlineVariant = Color(0xFFCAD4D8))
     val colors = if (dynamicColor && Build.VERSION.SDK_INT >= 31) {
         val dynamic = if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         val seed = if (dark) whaleDark else whaleLight
@@ -82,15 +73,12 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
             labelLarge = labelLarge.copy(fontWeight = FontWeight.Medium),
         )
     }
-    val backdrop = rememberLayerBackdrop()
-    MaterialTheme(colorScheme = colors, typography = typography, shapes = Shapes(extraSmall = RoundedCornerShape(16.dp), small = RoundedCornerShape(20.dp),
-        medium = RoundedCornerShape(24.dp), large = RoundedCornerShape(28.dp), extraLarge = RoundedCornerShape(36.dp))) {
-        CompositionLocalProvider(LocalBigFishBackdrop provides backdrop, LocalBigFishGlassDark provides dark,
-            LocalContentColor provides colors.onBackground) {
-            BoxWithConstraints(Modifier.fillMaxSize()) {
+    MaterialTheme(colorScheme = colors, typography = typography, shapes = Shapes(extraSmall = RoundedCornerShape(6.dp), small = RoundedCornerShape(8.dp),
+        medium = RoundedCornerShape(12.dp), large = RoundedCornerShape(16.dp), extraLarge = RoundedCornerShape(20.dp))) {
+        CompositionLocalProvider(LocalContentColor provides colors.onBackground) {
+            BoxWithConstraints(Modifier.fillMaxSize().background(colors.background)) {
                 val compact = maxHeight < 520.dp || LocalDensity.current.fontScale > 1.25f
                 CompositionLocalProvider(LocalBigFishCompact provides compact) {
-                    OceanBackdrop(Modifier.fillMaxSize().layerBackdrop(backdrop), dark, animated = motion && resumed)
                     content(dark)
                 }
             }

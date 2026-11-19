@@ -21,6 +21,30 @@ internal class BigFishSetupRepository(private val context: Context) {
     val needsRecovery get() = DurableFiles.exists(journal)
 
     fun summary(): JSONObject? = safeRead(summary)
+    fun pendingId(): String? = safeRead(request)?.optString("requestId")?.takeIf(String::isNotBlank)
+    fun deferred(): Boolean = safeRead(request)?.optBoolean("deferred") == true
+    fun discardPending() {
+        check(!needsRecovery) { "请先恢复上次设置" }
+        if (pending) DurableFiles.removeRecord(request)
+    }
+    fun beginDeferredAttempt() {
+        val value = safeRead(request) ?: return
+        if (value.optBoolean("deferred")) write(request, value.put("deferred", false))
+    }
+
+    fun changedFields(input: BigFishInput): List<String> {
+        val saved = summary() ?: return listOf("主人 QQ", "云端模型", "回复规则")
+        return buildList {
+            if (saved.optString("owner") != input.owner) add("主人 QQ")
+            if (saved.optString("endpoint") != input.endpoint) add("API 地址")
+            if (saved.optString("model") != input.model) add("模型")
+            if (savedKeyFor(input.endpoint) != input.key) add("API 密钥")
+            val oldOwner = saved.optString("owner")
+            if (BigFishInput.parseIds(saved.optString("friends")).toSet() - oldOwner != input.friends.toSet() - input.owner) add("好友名单")
+            if (BigFishInput.parseIds(saved.optString("groups")).toSet() != input.groups.toSet()) add("群名单")
+            if (BigFishConfig.readOptions(saved.optJSONObject("options")) != input.options) add("唤醒与回复设置")
+        }
+    }
     fun savedKey(): String {
         val providers = safeRead(configuration)?.optJSONArray("provider_sources") ?: return ""
         for (i in 0 until providers.length()) {
@@ -43,12 +67,14 @@ internal class BigFishSetupRepository(private val context: Context) {
         }
         return ""
     }
-    fun request(input: BigFishInput, verifiedAt: Long) {
+    fun request(input: BigFishInput, verifiedAt: Long, preferencesOnly: Boolean = false, deferred: Boolean = false): String {
         check(!needsRecovery) { "上次配置需要先恢复，请点击重试" }
+        val id = java.util.UUID.randomUUID().toString()
         write(request, JSONObject().put("schema", 1).put("owner", input.owner).put("endpoint", input.endpoint)
             .put("model", input.model).put("key", input.key).put("friends", input.friends.joinToString(","))
             .put("groups", input.groups.joinToString(",")).put("options", BigFishConfig.optionsJson(input.options))
-            .put("verifiedAt", verifiedAt).put("requestId", java.util.UUID.randomUUID().toString()))
+            .put("verifiedAt", verifiedAt).put("requestId", id).put("preferencesOnly", preferencesOnly).put("deferred", deferred))
+        return id
     }
     fun configurationUpdate(): JSONObject {
         check(!needsRecovery) { "上次配置尚未恢复" }
@@ -59,8 +85,10 @@ internal class BigFishSetupRepository(private val context: Context) {
         val existingToken = QqPlatform.bridge(current)?.token.orEmpty()
         val token = existingToken.takeIf { it.matches(Regex("[a-f0-9]{64}")) } ?: ByteArray(32).also(SecureRandom()::nextBytes)
             .joinToString("") { "%02x".format(it.toInt() and 255) }
-        return BigFishConfig.astrbot(current, input, token)
+        return BigFishConfig.astrbot(current, input, token,
+            preferencesOnly = values.optBoolean("preferencesOnly"), firstSetup = summary() == null)
     }
+    fun bridgeChanged(updated: JSONObject): Boolean = QqPlatform.bridge(updated) != safeRead(configuration)?.let(QqPlatform::bridge)
     fun prepare(updated: JSONObject, wanted: Set<ServiceId>) {
         check(!needsRecovery) { "上次配置尚未恢复" }
         val previous = JSONArray()
@@ -72,7 +100,12 @@ internal class BigFishSetupRepository(private val context: Context) {
     fun commit() {
         val values = requireNotNull(safeRead(request))
         // No key or bridge token is copied into the presentation record.
-        val result = JSONObject(values.toString()).apply { remove("key"); put("configuredAt", System.currentTimeMillis()) }
+        val result = JSONObject(values.toString()).apply {
+            remove("key")
+            remove("preferencesOnly")
+            remove("deferred")
+            put("configuredAt", System.currentTimeMillis())
+        }
         write(summary, result)
         DurableFiles.removeRecord(journal)
         DurableFiles.removeRecord(request)

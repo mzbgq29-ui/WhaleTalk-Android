@@ -33,7 +33,7 @@ class BigFishPersistenceTest {
         File(context.filesDir, "persistent").deleteRecursively(); File(context.filesDir, "operations").deleteRecursively()
     }
     @Test fun processRestartRecoversOriginalConfigAndDesiredServices() {
-        repository.request(input, 12345); repository.prepare(setOf(ServiceId.ASTRBOT))
+        repository.request(input, 12345); repository.prepare(repository.configurationUpdate(), setOf(ServiceId.ASTRBOT))
         assertEquals(384, Os.stat(config.path).st_mode and 511)
         assertEquals(384, Os.stat(File(context.filesDir, "persistent/manager/bigfish-request.json").path).st_mode and 511)
         val reopened = BigFishSetupRepository(context)
@@ -48,7 +48,7 @@ class BigFishPersistenceTest {
         repository.request(input, 12345)
         val request = File(context.filesDir, "persistent/manager/bigfish-request.json")
         val before = request.readText()
-        repository.prepare(emptySet()); repository.commit()
+        repository.prepare(repository.configurationUpdate(), emptySet()); repository.commit()
         val summary = requireNotNull(repository.summary())
         assertFalse(summary.toString().contains(input.key)); assertFalse(summary.has("key")); assertFalse(summary.has("token"))
         assertFalse(repository.needsRecovery); assertFalse(repository.pending)
@@ -57,14 +57,29 @@ class BigFishPersistenceTest {
         repository.request(input, 54321); repository.cleanCommittedRequest(); assertTrue(repository.pending)
     }
     @Test fun interruptedSummaryWriteRollsBackWithConfiguration() {
-        repository.request(input, 12345); repository.prepare(emptySet())
+        repository.request(input, 12345); repository.prepare(repository.configurationUpdate(), emptySet())
         val summary = File(context.filesDir, "persistent/manager/bigfish-setup.json")
         summary.writeText("""{"owner":"100001"}""")
         repository.recover()
         assertFalse(summary.exists()); assertEquals("preserve me", JSONObject(config.readText()).getString("custom"))
     }
+    @Test fun deferredDraftSurvivesWithoutChangingTheActiveConfiguration() {
+        val id = repository.request(input, 12345, deferred = true)
+        val reopened = BigFishSetupRepository(context)
+        assertEquals(id, reopened.pendingId())
+        assertTrue(reopened.deferred())
+        assertEquals(original, config.readText())
+
+        reopened.beginDeferredAttempt()
+        assertFalse(reopened.deferred())
+        reopened.prepare(reopened.configurationUpdate(), emptySet())
+        reopened.recover()
+        assertTrue(reopened.pending)
+        assertFalse(reopened.deferred())
+        assertEquals("preserve me", JSONObject(config.readText()).getString("custom"))
+    }
     @Test fun savedCredentialsCannotBeReusedForAnotherEndpoint() {
-        repository.request(input, 12345); repository.prepare(emptySet()); repository.commit()
+        repository.request(input, 12345); repository.prepare(repository.configurationUpdate(), emptySet()); repository.commit()
         assertEquals(input.key, repository.savedKeyFor(input.endpoint))
         assertEquals(input.key, repository.savedKeyFor(input.endpoint + "/"))
         assertEquals("", repository.savedKeyFor("https://other.example/v1"))
@@ -75,8 +90,8 @@ class BigFishPersistenceTest {
         assertEquals("", repository.savedKeyFor(input.endpoint))
     }
     @Test fun duplicatePreparationAndRecoveryPathEscapeAreRejected() {
-        repository.request(input, 12345); repository.prepare(emptySet())
-        assertThrows(IllegalStateException::class.java) { repository.prepare(emptySet()) }
+        repository.request(input, 12345); repository.prepare(repository.configurationUpdate(), emptySet())
+        assertThrows(IllegalStateException::class.java) { repository.prepare(repository.configurationUpdate(), emptySet()) }
         val journal = File(context.filesDir, "operations/bigfish-setup.json")
         val record = JSONObject(journal.readText())
         record.getJSONArray("files").getJSONObject(0).put("path", "../../must-not-write.json")

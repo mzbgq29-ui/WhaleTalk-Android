@@ -30,13 +30,15 @@ internal class SharedBackupArchive {
             .put("executable", executable).put("target", target)
     }
 
-    fun peekFormat(archive: File): String? = runCatching {
+    suspend fun peekFormat(archive: File): String? = runCatching {
         java.util.zip.ZipFile(archive).use { zip ->
             val entry = zip.getEntry("manifest.json") ?: return null
             require(entry.size in 1..MAX_MANIFEST)
-            JSONObject(zip.getInputStream(entry).bufferedReader().readText()).optString("format")
+            zip.getInputStream(entry).use { input ->
+                JSONObject(limited(input, MAX_MANIFEST).toString(Charsets.UTF_8)).optString("format")
+            }
         }
-    }.getOrNull()
+    }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }.getOrNull()
 
     suspend fun write(source: File, destination: File, versions: RuntimeVersions, automatic: Boolean): SharedBackupInfo {
         val entries = scan(source)
@@ -68,6 +70,7 @@ internal class SharedBackupArchive {
                     written = destination.length()
                 }
             }
+            requireLocalized(written in 1..MAX_ARCHIVE) { "共享备份 ZIP 超过大小限制" }
             checkLocalized(scan(source) == entries) { "备份过程中文件已变化，未创建备份" }
             return info(manifest).copy(bytes = written)
         } catch (failure: Throwable) { destination.delete(); throw failure }
@@ -82,10 +85,15 @@ internal class SharedBackupArchive {
                 val bytes = limited(zip, MAX_MANIFEST)
                 val manifest = JSONObject(bytes.toString(Charsets.UTF_8))
                 val entries = parse(manifest, versions)
+                requireLocalized(destination.parentFile!!.usableSpace >= entries.sumOf { it.bytes } + RESERVE) { "共享备份暂存空间不足" }
                 check(destination.mkdirs())
+                // Version 1 archives list the QQ scope but omit its fixed ancestors.
+                SharedBackupPolicy.SCOPES.forEach { scope ->
+                    Files.createDirectories(destination.toPath().resolve(scope).parent)
+                }
                 entries.filter { it.kind == "directory" }.sortedBy { it.name.count { c -> c == '/' } }.forEach {
-                    check(File(destination, it.name).mkdir() || File(destination, it.name).isDirectory)
-                    Os.chmod(File(destination, it.name).path, 448)
+                    val directory = Files.createDirectory(destination.toPath().resolve(it.name))
+                    Os.chmod(directory.toString(), 448)
                 }
                 entries.filter { it.kind == "file" }.forEach { entry ->
                     currentCoroutineContext().ensureActive()
@@ -100,6 +108,7 @@ internal class SharedBackupArchive {
                 requireLocalized(zip.nextEntry?.name == "complete.json") { "共享备份不完整" }
                 val complete = JSONObject(limited(zip, 1024).toString(Charsets.UTF_8))
                 requireLocalized(complete.getString("manifestSha256") == digest(bytes) && complete.getInt("entries") == entries.size) { "共享备份完成记录不匹配" }
+                requireLocalized(zip.nextEntry == null) { "共享备份含有额外文件" }
                 entries.filter { it.kind == "symlink" }.forEach { entry ->
                     Os.symlink(entry.target, File(destination, entry.name).path)
                 }
@@ -135,12 +144,55 @@ internal class SharedBackupArchive {
         }
         val array = manifest.getJSONArray("entries")
         requireLocalized(array.length() in 1..MAX_ENTRIES) { "共享备份条目数量异常" }
-        return (0 until array.length()).map { index ->
+        val entries = (0 until array.length()).map { index ->
             val value = array.getJSONObject(index)
             Entry(value.getString("name"), value.getString("kind"), value.optLong("bytes"),
                 value.optString("sha256"), value.optBoolean("executable"), value.optString("target"))
         }
+        validate(entries)
+        return entries
     }
+
+    private fun validate(entries: List<Entry>) {
+        val byName = entries.associateBy { it.name }
+        requireLocalized(byName.size == entries.size && SharedBackupPolicy.SCOPES.all { byName[it]?.kind == "directory" }) {
+            "共享备份含有重复路径或缺少数据目录"
+        }
+        var total = 0L
+        for (entry in entries) {
+            val parts = entry.name.split('/')
+            requireLocalized(entry.name.length in 1..1024 && parts.all { it.isNotEmpty() && it != "." && it != ".." } &&
+                entry.name.none { it == '\\' || it.code < 32 } && inScope(entry.name) && SharedBackupPolicy.retain(entry.name)) {
+                "共享备份含有无效路径"
+            }
+            if (entry.name !in SharedBackupPolicy.SCOPES) {
+                requireLocalized(byName[entry.name.substringBeforeLast('/')]?.kind == "directory") { "共享备份缺少父目录" }
+            }
+            when (entry.kind) {
+                "directory" -> requireLocalized(entry.bytes == 0L && entry.sha256.isEmpty() && entry.target.isEmpty() && !entry.executable) {
+                    "共享备份目录记录无效"
+                }
+                "file" -> {
+                    requireLocalized(entry.bytes in 0..MAX_FILE && entry.sha256.matches(SHA256) && entry.target.isEmpty()) { "共享备份文件记录无效" }
+                    total += entry.bytes
+                    requireLocalized(total <= MAX_UNPACKED) { "共享备份解开后超过限制" }
+                }
+                "symlink" -> requireLocalized(entry.bytes == 0L && entry.sha256.isEmpty() && !entry.executable &&
+                    validLink(entry.name, entry.target)) { "共享备份符号链接超出数据范围或含有无效路径" }
+                else -> throw IllegalArgumentException("共享备份文件类型不受支持")
+            }
+        }
+    }
+
+    private fun validLink(name: String, target: String): Boolean {
+        if (target.length !in 1..1024 || target.startsWith('/') || target.any { it == '\\' || it.code < 32 }) return false
+        val relative = Paths.get(target)
+        if (target != "." && relative.normalize().toString() != target) return false
+        val parent = Paths.get(name).parent ?: return false
+        return inScope(parent.resolve(relative).normalize().toString())
+    }
+
+    private fun inScope(name: String) = SharedBackupPolicy.SCOPES.any { name == it || name.startsWith("$it/") }
 
     private suspend fun scan(root: File): List<Entry> {
         requireLocalized(root.isDirectory && !Files.isSymbolicLink(root.toPath())) { "数据目录无效" }
@@ -177,7 +229,7 @@ internal class SharedBackupArchive {
                         }
                         attrs.isSymbolicLink -> {
                             val target = Files.readSymbolicLink(file).toString()
-                            if (!target.startsWith('/') && target.none { it == '\\' || it.code < 32 }) {
+                            if (validLink(name, target)) {
                                 entries += Entry(name, "symlink", target = target)
                             }
                         }
@@ -226,6 +278,7 @@ internal class SharedBackupArchive {
 
     companion object {
         const val FORMAT = "whaletalk-shared-v1"
+        private val SHA256 = Regex("[0-9a-f]{64}")
         const val MAX_ARCHIVE = 2L * 1024 * 1024 * 1024
         private const val MAX_UNPACKED = 8L * 1024 * 1024 * 1024
         private const val MAX_FILE = 2L * 1024 * 1024 * 1024

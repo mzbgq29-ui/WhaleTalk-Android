@@ -36,13 +36,22 @@ import kotlinx.coroutines.*
     val suggestions = buildList<Pair<String, StudioPage>> {
         if (!state.componentsReady) add("先完成运行环境准备。首次解压时保持前台，并预留足够存储。" to StudioPage.SETUP)
         if (!vm.configured) add("填写服务商、API Key 和聊天模型，再验证连接并保存。" to StudioPage.MODEL)
-        if (bot.process == ProcessState.CRASHED) add("思考引擎意外退出，先查看最近日志中的具体原因。" to StudioPage.LOGS)
+        if (bot.process == ProcessState.CRASHED) add("AstrBot 意外退出，请查看运行日志。" to StudioPage.LOGS)
         if (qq.process == ProcessState.CRASHED) add("QQ 连接服务意外退出，查看日志后可在连接 QQ 页重新启动。" to StudioPage.QQ)
-        if (state.componentsReady && !bot.desiredRunning && !qq.desiredRunning) add("服务处于暂停状态，可回首页点击「让鲸鱼上线」。" to StudioPage.HOME)
-        if (qq.desiredRunning && qq.qq != QqState.ONLINE) add("打开 QQ 登录画面，完成扫码、账号登录及安全验证；画面可保存到相册。" to StudioPage.QQ)
+        if (state.componentsReady && !bot.desiredRunning && !qq.desiredRunning) add("服务已停止，可在运行页启动。" to StudioPage.HOME)
+        when (qq.qq) {
+            QqState.LOGGED_OUT -> add("QQ 尚未登录。" to StudioPage.QQ)
+            QqState.VERIFICATION_REQUIRED -> add("QQ 需要安全验证。" to StudioPage.QQ)
+            QqState.OFFLINE -> add("QQ 已掉线，请查看登录画面。" to StudioPage.QQ)
+            else -> Unit
+        }
         if (qq.qq == QqState.ONLINE && qq.oneBot != OneBotState.CONNECTED) add("QQ 已登录但消息通道尚未连通，先确认思考引擎正在运行，再查看连接日志。" to StudioPage.SERVICES)
         if (bot.health == HealthState.UNRESPONSIVE) add("思考引擎没有及时响应，可先查看日志，确认没有维护任务后重新启动。" to StudioPage.LOGS)
-        add("后台容易掉线时，检查电池豁免、运行通知与系统自启动设置。" to StudioPage.BACKGROUND)
+    }
+    val primary = suggestions.firstOrNull() ?: if (qq.oneBot == OneBotState.CONNECTED) {
+        "消息通道已连通，可以试算允许名单和唤醒规则。" to StudioPage.ACCESS
+    } else {
+        "尚未确认消息通道状态，请查看运行详情。" to StudioPage.SERVICES
     }
     val serviceSummary = buildString {
         appendLine("运行环境：${if (state.componentsReady) "已准备" else "待准备"}")
@@ -51,7 +60,11 @@ import kotlinx.coroutines.*
         appendLine("QQ 连接服务：${qq.process} / ${qq.health}")
         appendLine("QQ 在线状态：${qq.qq}；消息通道：${qq.oneBot}")
     }
-    StudioCard("快速排障", "只读取设备与运行状态，不发送 QQ 消息、不调用付费模型，也不会自动重启服务。") {
+    StudioCard("为什么没回复？", accent = true) {
+        Text(primary.first)
+        LiquidButton(onClick = { vm.go(primary.second) }) { Text(primary.second.title) }
+    }
+    StudioCard("状态详情") {
         Text(serviceSummary)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             LiquidOutlinedButton(onClick = { revision++ }, Modifier.weight(1f), enabled = !reading) { Text(if (reading) "检查中…" else "重新检查") }
@@ -93,7 +106,8 @@ import kotlinx.coroutines.*
         portChecks.forEach { (name, result) -> StudioStatus(name, result) }
     }
     StudioCard("接下来可以做") {
-        suggestions.forEach { (text, page) -> StudioTile(page.title, text, { vm.go(page) }) }
+        suggestions.drop(1).forEach { (text, page) -> StudioTile(page.title, text, { vm.go(page) }) }
+        StudioTile("后台运行", "检查电池豁免、运行通知与自启动权限。", { vm.go(StudioPage.BACKGROUND) })
         StudioTile("模型连接测试", "去模型页手动测试，并查看耗时；可能产生少量云端费用。", { vm.go(StudioPage.MODEL) })
     }
     StudioCard("设备信息") { SelectionContainer { Text(device.ifBlank { "正在读取…" }, style = MaterialTheme.typography.bodySmall) } }

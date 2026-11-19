@@ -24,5 +24,5 @@ jobs:
         run: gcc -fsyntax-only -std=gnu11 -Wall app/src/main/assets/runtime/desktop/guest_compat.c
       - name: Compile application sources
         run: bash gradlew :core:compileKotlin :app:compileBootstrapReleaseKotlin
-      - name: Run unit tests
-        run: bash gradlew :core:test :app:testBootstrapDebugUnitTest --no-daemon
+      - name: Run unit tests and compile Android instrumentation tests
+        run: bash gradlew :core:test :app:testBootstrapDebugUnitTest :app:compileBootstrapDebugAndroidTestKotlin --no-daemon
