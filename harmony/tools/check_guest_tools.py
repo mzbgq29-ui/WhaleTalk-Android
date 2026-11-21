@@ -50,7 +50,22 @@ with tempfile.TemporaryDirectory() as directory:
     builder.unpack_tar(tar([("usr/lib/fixture", "file", "verified"), ("lib", "link", "/usr/lib"), ("lib/second", "file", "safe")]), root)
     assert (root / "lib/fixture").read_text() == "verified"
     assert (root / "usr/lib/second").read_text() == "safe"
-    for entries in ([('../outside', 'file', 'escape')], [('escape', 'link', '../../outside')]):
+    escaped_name = r"usr/lib/systemd/system/system-systemd\x2dcryptsetup.slice"
+    escaped_link = r"usr/lib/systemd/system/multi-user.target.wants/system-systemd\x2dcryptsetup.slice"
+    builder.unpack_tar(tar([(escaped_name, "file", "[Slice]\n"),
+                            (escaped_link, "link", r"../system-systemd\x2dcryptsetup.slice")]), root)
+    assert (root / escaped_name).read_text() == "[Slice]\n"
+    assert (root / escaped_link).read_text() == "[Slice]\n"
+    assert not (root / escaped_name.replace(r"\x2d", "-")).exists(), "POSIX escapes were incorrectly decoded"
+    for name in ("/absolute", "../outside", "nested/../outside", "nul\0name"):
+        try:
+            builder.name_path(name)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Unsafe archive name was accepted")
+    for entries in ([('../outside', 'file', 'escape')], [('escape', 'link', '../../outside')],
+                    [(".././", "file", "escape")], [("absolute-link", "link", "/../outside")]):
         try:
             builder.unpack_tar(tar(entries), root)
         except ValueError:

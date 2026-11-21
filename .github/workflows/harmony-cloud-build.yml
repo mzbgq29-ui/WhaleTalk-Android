@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   native_core:
     runs-on: ubuntu-24.04
@@ -21,6 +25,7 @@ jobs:
           persist-credentials: false
       - name: Free hosted runner disk
         run: |
+          set -euo pipefail
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /usr/share/swift \
             /usr/local/share/swift /opt/hostedtoolcache/CodeQL /opt/ghc /usr/local/.ghcup
           df -h /
@@ -45,6 +50,7 @@ jobs:
       - name: Install native build prerequisites
         if: steps.native_cache.outputs.cache-hit != 'true'
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build pkg-config curl wget unzip zip ripgrep patchelf \
@@ -59,11 +65,13 @@ jobs:
       - name: Build TCI core for phones
         if: steps.native_cache.outputs.cache-hit != 'true'
         run: |
+          set -euo pipefail
           source "$RUNNER_TEMP/harmony-env.sh"
           mkdir -p harmony/build-evidence
           bash harmony/ci/build-tci.sh harmony 2>&1 | tee harmony/build-evidence/tci-build.log
       - name: Fetch and verify Linux kernel
         run: |
+          set -euo pipefail
           python3 harmony/ci/fetch-vm-assets.py harmony
           mkdir -p harmony/build-evidence
           cp harmony/runtime-sources.lock.json harmony/build-evidence/
@@ -101,11 +109,13 @@ jobs:
           persist-credentials: false
       - name: Free hosted runner disk
         run: |
+          set -euo pipefail
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /usr/share/swift \
             /usr/local/share/swift /opt/hostedtoolcache/CodeQL /opt/ghc /usr/local/.ghcup
           df -h /
       - name: Install Linux guest build and emulator tools
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             qemu-utils qemu-system-arm e2fsprogs zstd curl python3
@@ -117,6 +127,7 @@ jobs:
       - name: Build full Ubuntu QQ AstrBot guest
         if: steps.guest_cache.outputs.cache-hit != 'true'
         run: |
+          set -euo pipefail
           curl --fail --silent --show-error --location --retry 3 \
             'https://github.com/mzbgq29-ui/WhaleTalk-Android/releases/download/v1.7.0/WhaleTalk-Android-1.7.0-arm64-v8a.apk' \
             -o "$RUNNER_TEMP/whaletalk-1.7.0.apk"
@@ -130,6 +141,7 @@ jobs:
           rm -rf "$RUNNER_TEMP/whaletalk-guest-build" "$RUNNER_TEMP/whaletalk-1.7.0.apk"
       - name: Boot and verify actual ARM64 guest services
         run: |
+          set -euo pipefail
           python3 harmony/ci/fetch-vm-assets.py harmony
           mkdir -p harmony/build-evidence
           cp "$RUNNER_TEMP/whaletalk-guest-cache/build-receipt.json" harmony/build-evidence/guest-build-receipt.json
@@ -139,6 +151,7 @@ jobs:
             --output harmony/build-evidence/guest-smoke --timeout 600
       - name: Stage verified guest disk
         run: |
+          set -euo pipefail
           cp "$RUNNER_TEMP/whaletalk-guest-cache/whaletalk-ubuntu-arm64.qcow2" \
             harmony/entry/src/main/resources/rawfile/vm/rootfs_aarch64.qcow2
           rm -f harmony/build-evidence/guest-smoke/smoke-overlay.qcow2
@@ -166,8 +179,54 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  frontend_check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Free hosted runner disk
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /usr/share/swift \
+            /usr/local/share/swift /opt/hostedtoolcache/CodeQL /opt/ghc /usr/local/.ghcup
+          df -h /
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+      - name: Install frontend build prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build curl unzip zip ripgrep python3
+      - name: Install official HarmonyOS API18 toolchain
+        run: bash harmony/ci/setup-harmony-sdk.sh "$RUNNER_TEMP/harmony-tools" "$RUNNER_TEMP/harmony-env.sh"
+      - name: Compile ArkTS and native bridge only
+        run: |
+          set -euo pipefail
+          source "$RUNNER_TEMP/harmony-env.sh"
+          mkdir -p harmony/build-evidence
+          bash harmony/ci/assemble-unsigned.sh harmony --compile-only 2>&1 | tee harmony/build-evidence/frontend-build.log
+      - name: Upload frontend diagnostics only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-diagnostics-${{ github.sha }}
+          path: |
+            harmony/build-evidence/frontend-build.log
+            harmony/build-evidence/frontend-compile-report.json
+            harmony/.hvigor/report/
+          if-no-files-found: ignore
+          retention-days: 7
+
   hap:
-    needs: [native_core, guest_image]
+    needs: [native_core, guest_image, frontend_check]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -176,6 +235,7 @@ jobs:
           persist-credentials: false
       - name: Free hosted runner disk
         run: |
+          set -euo pipefail
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /usr/share/swift \
             /usr/local/share/swift /opt/hostedtoolcache/CodeQL /opt/ghc /usr/local/.ghcup
           df -h /
@@ -188,6 +248,7 @@ jobs:
           java-version: '17'
       - name: Install packaging prerequisites
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends curl unzip zip ripgrep python3
       - name: Download verified native core
@@ -200,10 +261,16 @@ jobs:
         with:
           name: guest-runtime-${{ github.sha }}
           path: harmony
+      - name: Download frontend compile evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-diagnostics-${{ github.sha }}
+          path: harmony/build-evidence/frontend-check
       - name: Install official HarmonyOS API18 toolchain
         run: bash harmony/ci/setup-harmony-sdk.sh "$RUNNER_TEMP/harmony-tools" "$RUNNER_TEMP/harmony-env.sh"
       - name: Assemble and audit complete unsigned HAP
         run: |
+          set -euo pipefail
           source "$RUNNER_TEMP/harmony-env.sh"
           bash harmony/ci/assemble-unsigned.sh harmony
       - uses: actions/upload-artifact@v4

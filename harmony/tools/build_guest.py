@@ -29,7 +29,9 @@ def digest(path):
 
 def name_path(name):
     p = PurePosixPath(name)
-    if p.is_absolute() or ".." in p.parts or "\\" in name or "\0" in name:
+    # Archives target Linux: a backslash is an ordinary filename character,
+    # including systemd's literal \x2d escaped unit names, not a separator.
+    if p.is_absolute() or ".." in p.parts or "\0" in name:
         raise ValueError(f"Unsafe archive name: {name!r}")
     return Path(*p.parts)
 
@@ -55,7 +57,7 @@ def unpack_tar(fileobj, root, mode="r:*"):
     count = 0
     with tarfile.open(fileobj=fileobj, mode=mode) as archive:
         for member in archive:
-            if member.name.strip("./") == "":
+            if not PurePosixPath(member.name).parts:
                 continue
             target = inside(root, member.name)
             if member.isdir():
@@ -69,7 +71,7 @@ def unpack_tar(fileobj, root, mode="r:*"):
             remove(target)
             if member.issym():
                 link = member.linkname
-                if "\0" in link or "\\" in link:
+                if "\0" in link:
                     raise ValueError("Invalid symlink")
                 if link.startswith("/"):
                     link = os.path.relpath(root / name_path(link.lstrip("/")), target.parent)
