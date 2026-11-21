@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import re
 import socket
 import socketserver
 import subprocess
@@ -77,6 +78,36 @@ with tempfile.TemporaryDirectory() as directory:
     guest.DATA = guest.STATE / "astrbot/data"
     guest.PRODUCT = Path(directory) / "product"
     guest.LOGS = Path(directory) / "logs"
+    for group, name in (("plugins", "astrbot_plugin_memory_companion"), ("site-packages", "argon2")):
+        component = guest.PRODUCT / "seed/astrbot/data" / group / name
+        component.mkdir(parents=True)
+        (component / "fixture.txt").write_text("bundled")
+    guest.seed_persistent()
+    dashboard_password = guest.initial_dashboard_password()
+    assert len(dashboard_password) >= 8 and re.search(r"[A-Z]", dashboard_password)
+    assert re.search(r"[a-z]", dashboard_password) and re.search(r"[0-9]", dashboard_password)
+    assert guest.initial_dashboard_password() == dashboard_password, "Reboot changed a valid initial password"
+    password_file = guest.STATE / "manager/astrbot-initial-password"
+    password_file.write_text("a" * 40)
+    assert guest.initial_dashboard_password() == "Aa7!" + "a" * 40, "Previous prototype credentials were not repaired"
+    password_file.write_text("UserOwnedPassword7")
+    assert guest.initial_dashboard_password() == "UserOwnedPassword7", "A user-supplied credential was replaced"
+    seeded = guest.read_json(guest.DATA / "cmd_config.json")
+    bridge_token = seeded["platform"][0]["ws_reverse_token"]
+    assert len(bridge_token) == 64 and seeded["dashboard"]["host"] == "0.0.0.0"
+    onebot = guest.read_json(guest.STATE / "snowluma/config/onebot.json")
+    assert onebot["networks"]["wsClients"][0]["accessToken"] == bridge_token
+    assert onebot["networks"]["wsClients"][0]["url"] == "ws://127.0.0.1:6199/ws"
+    plugin_file = guest.DATA / "plugins/astrbot_plugin_memory_companion/fixture.txt"
+    plugin_file.write_text("user-modified")
+    seeded["provider"] = [{"id": "user-configured-model"}]
+    guest.atomic_json(guest.DATA / "cmd_config.json", seeded)
+    guest.seed_persistent()
+    assert plugin_file.read_text() == "user-modified", "Reboot overwrote a user plugin"
+    seeded_again = guest.read_json(guest.DATA / "cmd_config.json")
+    assert seeded_again["provider"] == seeded["provider"], "Reboot discarded model configuration"
+    assert seeded_again["platform"][0]["ws_reverse_token"] == bridge_token, "Reboot replaced persisted bridge credentials"
+    assert guest.read_json(guest.DATA / "config/astrbot_plugin_group_chat_plus_config.json")["enable_group_chat"] is False
     guest.LOGS.mkdir()
     for name in ("manager", "astrbot", "qq"):
         (guest.LOGS / (name + ".log")).write_text('Authorization: Bearer secret-test-value\n{"api_key":"private-value"}\nvisible\n')
@@ -145,4 +176,4 @@ with tempfile.TemporaryDirectory() as directory:
         echo.shutdown()
         echo.server_close()
 
-print("PASS: safe archives, authenticated API, secret redaction, process reaping, transparent TCP relay")
+print("PASS: safe archives, persistent seeding, authenticated API, secret redaction, process reaping, transparent TCP relay")
