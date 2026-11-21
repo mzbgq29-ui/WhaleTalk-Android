@@ -38,7 +38,10 @@ def configure_network():
     def address(name, command, value):
         fcntl.ioctl(sock, command, struct.pack("16sH2x4s8x", name.encode(), socket.AF_INET, socket.inet_aton(value)))
     flags("lo")
-    names = [p.name for p in Path("/sys/class/net").iterdir() if p.name != "lo"]
+    # The pinned kernel also creates dummy0. Select the virtio-backed NIC,
+    # rather than assigning the SLIRP address to the first non-loopback device.
+    names = sorted(p.name for p in Path("/sys/class/net").iterdir()
+                   if p.name != "lo" and (p / "device").exists())
     if not names:
         raise RuntimeError("No virtio network interface")
     interface = names[0]
