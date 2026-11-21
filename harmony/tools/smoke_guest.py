@@ -31,8 +31,11 @@ def main(args):
     network = "user,id=net0" + "".join(f",hostfwd=tcp:127.0.0.1:{host}-:{guest}" for guest, host in mappings.items())
     overlay = (args.output / "smoke-overlay.qcow2").resolve()
     subprocess.run(["qemu-img", "create", "-q", "-f", "qcow2", "-F", "qcow2", "-b", str(args.image.resolve()), str(overlay)], check=True)
-    command = ["qemu-system-aarch64", "-machine", "virt,accel=tcg", "-cpu", "cortex-a72", "-smp", str(args.cpus), "-m", str(args.memory),
-               "-nographic", "-no-reboot", "-kernel", str(args.kernel.resolve()), "-append", "root=/dev/sda rw rootwait rootfstype=ext4 console=ttyAMA0 init=/init",
+    # Match the HAP/HiSH CPU profile. The pinned kernel is built with mandatory
+    # ARMv8.1 LSE atomics; cortex-a72 is ARMv8.0 and stalls before its console.
+    command = ["qemu-system-aarch64", "-machine", "virt,accel=tcg", "-cpu", "max,sve=off,pmu=off", "-smp", str(args.cpus), "-m", str(args.memory),
+               "-nographic", "-no-reboot", "-kernel", str(args.kernel.resolve()), "-append", "root=/dev/sda rw rootwait rootfstype=ext4 console=ttyAMA0 earlycon=pl011,0x9000000 earlyprintk loglevel=8 init=/init",
+               "-d", "guest_errors,cpu_reset", "-D", str((args.output / "qemu-debug.log").resolve()),
                "-drive", f"if=none,format=qcow2,file={overlay},id=disk0,cache=writeback", "-device", "virtio-scsi-pci,id=scsi0",
                "-device", "scsi-hd,drive=disk0,bus=scsi0.0,logical_block_size=4096,physical_block_size=4096",
                # We boot a Linux kernel directly. A PXE/EFI option ROM is unused
@@ -55,6 +58,8 @@ def main(args):
         try:
             deadline = time.monotonic() + args.timeout
             last_status = None
+            last_progress = None
+            next_heartbeat = time.monotonic() + 30
             while time.monotonic() < deadline:
                 if process.poll() is not None:
                     raise RuntimeError("QEMU exited before guest checks completed")
@@ -80,6 +85,11 @@ def main(args):
                         break
                 except (OSError, ValueError, KeyError):
                     pass
+                progress = {key: report.get(key, False) for key in ("guestBooted", "runtimeImports", "astrbotHttp", "qqLoginDesktop", "noVncHttp", "snowlumaHttp")}
+                if progress != last_progress or time.monotonic() >= next_heartbeat:
+                    print("Guest smoke progress: " + json.dumps(progress), flush=True)
+                    last_progress = progress
+                    next_heartbeat = time.monotonic() + 30
                 time.sleep(3)
             for service in ("manager", "astrbot", "qq"):
                 try:

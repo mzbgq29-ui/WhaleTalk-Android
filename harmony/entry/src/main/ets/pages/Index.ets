@@ -6,6 +6,7 @@ import { whaleApi, WhaleAction, WhaleServiceStatus, WhaleWebDestination } from '
 struct Index {
   @State vmPhase: string = 'missing';
   @State vmDetail: string = '点击启动，准备鲸语运行环境。';
+  @State requiresRestart: boolean = false;
   @State memoryMiB: number = 2048;
   @State supervisorReady: boolean = false;
   @State astrbotState: string = '尚未连接';
@@ -45,6 +46,7 @@ struct Index {
     const state = vmRuntime.getState();
     this.vmPhase = state.phase;
     this.vmDetail = state.detail;
+    this.requiresRestart = state.requiresRestart;
   }
 
   private serviceLabel(status: WhaleServiceStatus, isQq: boolean): string {
@@ -104,6 +106,11 @@ struct Index {
     this.busy = true;
     this.error = '';
     try {
+      this.syncVmState();
+      if (this.requiresRestart) {
+        await vmRuntime.restartApplication();
+        return;
+      }
       if (this.vmPhase === 'running') {
         await whaleApi.control('all', 'start');
       } else {
@@ -212,7 +219,7 @@ struct Index {
           this.statusRow('聊天引擎', this.astrbotState, this.astrbotState === '服务就绪')
           this.statusRow('QQ 接入', this.qqState, this.qqState === '接入服务已启动')
 
-          if (this.vmPhase !== 'running') {
+          if (this.vmPhase !== 'running' && !this.requiresRestart) {
             Row() {
               Text('运行内存').fontSize(14).fontColor('#657A8F').layoutWeight(1)
               Select([{ value: '2 GB' }, { value: '4 GB' }])
@@ -223,9 +230,10 @@ struct Index {
             }.width('100%')
           }
 
-          Button(this.busy ? '正在处理…' : '启动鲸语')
+          Button(this.busy ? '正在处理…' : this.requiresRestart ? '重新打开鲸语' : '启动鲸语')
             .width('100%').height(46).backgroundColor('#007D80').fontColor('#FFFFFF')
-            .enabled(!this.busy && (this.vmPhase !== 'running' || this.supervisorReady))
+            .enabled(!this.busy && this.vmPhase !== 'stopping' &&
+              (this.requiresRestart || this.vmPhase !== 'running' || this.supervisorReady))
             .onClick(() => { void this.start(); })
           if (this.vmPhase === 'running') {
             Row({ space: 12 }) {

@@ -119,7 +119,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             qemu-utils qemu-system-arm e2fsprogs zstd curl python3
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         id: guest_cache
         with:
           path: ${{ runner.temp }}/whaletalk-guest-cache/
@@ -139,6 +139,12 @@ jobs:
           mv "$RUNNER_TEMP/whaletalk-guest-build/whaletalk-ubuntu-arm64.qcow2" "$RUNNER_TEMP/whaletalk-guest-cache/"
           cp "$RUNNER_TEMP/whaletalk-guest-build/build-receipt.json" "$RUNNER_TEMP/whaletalk-guest-cache/"
           rm -rf "$RUNNER_TEMP/whaletalk-guest-build" "$RUNNER_TEMP/whaletalk-1.7.0.apk"
+      - name: Save built guest before smoke test
+        if: steps.guest_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/whaletalk-guest-cache/
+          key: ${{ steps.guest_cache.outputs.cache-primary-key }}
       - name: Boot and verify actual ARM64 guest services
         run: |
           set -euo pipefail

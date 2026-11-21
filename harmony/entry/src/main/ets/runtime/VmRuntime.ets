@@ -1,4 +1,4 @@
-import { common } from '@kit.AbilityKit';
+import { common, Want } from '@kit.AbilityKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { http } from '@kit.NetworkKit';
@@ -10,6 +10,7 @@ export interface VmState {
   phase: string;
   detail: string;
   memoryMiB: number;
+  requiresRestart: boolean;
 }
 
 interface BootstrapConfig {
@@ -37,12 +38,27 @@ class VmRuntime {
     const nativeState = nativeVm.getVMStatus();
     if (nativeState === 2) {
       this.phase = 'stopped';
-      this.detail = '运行环境已关闭。再次启动前请关闭鲸语并重新打开。';
+      this.detail = '运行环境已关闭。点击重新打开鲸语后，即可再次启动。';
     } else if (nativeState === 3) {
       this.phase = 'failed';
       this.detail = nativeVm.getVMError();
     }
-    return { phase: this.phase, detail: this.detail, memoryMiB: this.memoryMiB };
+    return { phase: this.phase, detail: this.detail, memoryMiB: this.memoryMiB,
+      requiresRestart: nativeState === 2 || nativeState === 3 };
+  }
+
+  async restartApplication(): Promise<void> {
+    const nativeState = nativeVm.getVMStatus();
+    if (nativeState !== 2 && nativeState !== 3) {
+      throw new Error('请先关闭运行环境，等待数据保存完成后再重新打开鲸语。');
+    }
+    const context = this.getContext();
+    const want: Want = {
+      bundleName: context.abilityInfo.bundleName,
+      abilityName: context.abilityInfo.name
+    };
+    // QEMU's embedded entry is single-use. Restart the host instead of re-entering it.
+    context.getApplicationContext().restartApp(want);
   }
 
   async prepare(): Promise<void> {
@@ -116,7 +132,7 @@ class VmRuntime {
     const ports: number[] = [8765, 6185, 6081, 5099];
     const network = 'user,id=net0' + ports.map((port: number): string => `,hostfwd=tcp:127.0.0.1:${port}-:${port}`).join('');
     const args: string[] = [
-      'qemu-system-aarch64', '-machine', 'virt', '-cpu', 'max',
+      'qemu-system-aarch64', '-machine', 'virt', '-cpu', 'max,sve=off,pmu=off',
       '-accel', 'tcg,thread=multi,tb-size=128', '-smp', '2', '-m', memoryMiB.toString(),
       '-kernel', `${root}/kernel_aarch64`,
       '-append', 'root=/dev/sda rw rootfstype=ext4 rootwait console=ttyAMA0 net.ifnames=0 init=/init',
