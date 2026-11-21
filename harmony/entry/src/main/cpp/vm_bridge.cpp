@@ -15,6 +15,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
 
@@ -121,6 +122,36 @@ napi_value CopyRawFile(napi_env env, napi_callback_info info) {
     napi_queue_async_work(env, job->work);
     return promise;
 }
+napi_value WritePrivateText(napi_env env, napi_callback_info info) {
+    size_t count = 2;
+    napi_value args[2];
+    napi_get_cb_info(env, info, &count, args, nullptr, nullptr);
+    if (count != 2) { napi_throw_type_error(env, nullptr, "writePrivateText requires destination and text"); return nullptr; }
+    const std::string destination = String(env, args[0]);
+    const std::string text = String(env, args[1]);
+    const std::string temporary = destination + ".installing";
+    int file = open(temporary.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+    bool success = file >= 0;
+    if (success) {
+        success = fchmod(file, 0600) == 0;
+        size_t written = 0;
+        while (success && written < text.size()) {
+            const ssize_t amount = write(file, text.data() + written, text.size() - written);
+            if (amount < 0 && errno == EINTR) continue;
+            if (amount <= 0) { success = false; break; }
+            written += static_cast<size_t>(amount);
+        }
+        success = success && fsync(file) == 0;
+        close(file);
+    }
+    success = success && rename(temporary.c_str(), destination.c_str()) == 0;
+    if (!success) {
+        unlink(temporary.c_str());
+        napi_throw_error(env, nullptr, "无法保存本机运行凭据，请检查存储空间");
+        return nullptr;
+    }
+    return Bool(env, true);
+}
 napi_value StartVM(napi_env env, napi_callback_info info) {
     size_t count = 1;
     napi_value value;
@@ -170,6 +201,7 @@ napi_value GetVMError(napi_env env, napi_callback_info) {
 napi_value Init(napi_env env, napi_value exports) {
     napi_property_descriptor descriptors[] = {
         {"copyRawFile", nullptr, CopyRawFile, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"writePrivateText", nullptr, WritePrivateText, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"startVM", nullptr, StartVM, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getVMStatus", nullptr, GetVMStatus, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getVMError", nullptr, GetVMError, nullptr, nullptr, nullptr, napi_default, nullptr}

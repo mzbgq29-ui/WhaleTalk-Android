@@ -35,7 +35,9 @@ def main(args):
                "-nographic", "-no-reboot", "-kernel", str(args.kernel.resolve()), "-append", "root=/dev/sda rw rootwait rootfstype=ext4 console=ttyAMA0 init=/init",
                "-drive", f"if=none,format=qcow2,file={overlay},id=disk0,cache=writeback", "-device", "virtio-scsi-pci,id=scsi0",
                "-device", "scsi-hd,drive=disk0,bus=scsi0.0,logical_block_size=4096,physical_block_size=4096",
-               "-device", "virtio-net-pci,netdev=net0", "-netdev", network,
+               # We boot a Linux kernel directly. A PXE/EFI option ROM is unused
+               # and is absent in --no-install-recommends hosted-runner images.
+               "-device", "virtio-net-pci,netdev=net0,romfile=", "-netdev", network,
                "-fsdev", f"local,security_model=mapped-file,id=share,path={share}", "-device", "virtio-9p-pci,fsdev=share,mount_tag=hostshare",
                "-device", "virtio-rng-pci"]
     (args.output / "qemu-command.json").write_text(json.dumps(command, indent=2))

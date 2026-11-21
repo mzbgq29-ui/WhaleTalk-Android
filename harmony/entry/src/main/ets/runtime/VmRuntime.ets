@@ -82,11 +82,7 @@ class VmRuntime {
       const bytes = cryptoFramework.createRandom().generateRandomSync(32).data;
       this.token = Array.from(bytes).map((value: number): string => value.toString(16).padStart(2, '0')).join('');
       const config: BootstrapConfig = { apiToken: this.token };
-      const temporary = `${configPath}.installing`;
-      const file = fs.openSync(temporary, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
-      try { fs.writeSync(file.fd, JSON.stringify(config)); } finally { fs.closeSync(file); }
-      fs.chmodSync(temporary, 0o600);
-      fs.renameSync(temporary, configPath);
+      nativeVm.writePrivateText(configPath, JSON.stringify(config));
     }
     AppStorage.setOrCreate('whaletalk.apiToken', this.token);
 
@@ -126,7 +122,7 @@ class VmRuntime {
       '-append', 'root=/dev/sda rw rootfstype=ext4 rootwait console=ttyAMA0 net.ifnames=0 init=/init',
       '-drive', `if=none,id=disk0,format=qcow2,file=${root}/rootfs_aarch64.qcow2,cache=writeback`,
       '-device', 'virtio-scsi-pci,id=scsi0', '-device', 'scsi-hd,drive=disk0,bus=scsi0.0',
-      '-netdev', network, '-device', 'virtio-net-pci,netdev=net0',
+      '-netdev', network, '-device', 'virtio-net-pci,netdev=net0,romfile=',
       '-fsdev', `local,id=share,path=${context.filesDir}/share,security_model=none`,
       '-device', 'virtio-9p-pci,fsdev=share,mount_tag=hostshare',
       '-device', 'virtio-rng-pci', '-serial', `file:${root}/serial.log`,
