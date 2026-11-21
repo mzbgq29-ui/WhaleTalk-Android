@@ -1,0 +1,506 @@
+#!/usr/bin/env python3
+"""Dedicated guest process supervision and authenticated local HAP API.
+
+Only fixed service commands are exposed. The main thread owns child launch,
+waitpid/reaping, restart backoff and shutdown; HTTP worker threads use a queue.
+"""
+import ctypes
+import hashlib
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import hmac
+import json
+import os
+from pathlib import Path
+import queue
+import re
+import secrets
+import select
+import shutil
+import signal
+import socket
+import socketserver
+import subprocess
+import threading
+import time
+from urllib.parse import parse_qs, urlsplit
+import uuid
+
+STATE = Path("/persistent")
+MANAGER = Path("/manager")
+DATA = STATE / "astrbot/data"
+SHARE = Path("/hostshare")
+PRODUCT = Path("/usr/share/whaletalk")
+LOGS = STATE / "logs"
+PORTS = {"manager": 8765, "astrbot": 6185, "qqWeb": 6081, "rfb": 5920, "snowluma": 6099, "snowWeb": 5099}
+
+
+def read_json(path, default=None):
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return default
+
+
+def atomic_json(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".new")
+    with temporary.open("w") as f:
+        os.fchmod(f.fileno(), 0o600)
+        json.dump(value, f, ensure_ascii=False, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    temporary.replace(path)
+
+
+def text_secret(path, size=32):
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(secrets.token_hex(size))
+        path.chmod(0o600)
+    return path.read_text().strip()
+
+
+def redact(text):
+    text = re.sub(r"(?i)(Bearer\s+)[A-Za-z0-9._~+/-]+", r"\1[redacted]", text)
+    text = re.sub(r"\bsk-[A-Za-z0-9_-]{12,}\b", "[redacted]", text)
+    return re.sub(r'(?i)([\"\']?(?:api[_-]?key|access[_-]?token|password|authorization)[\"\']?\s*[:=]\s*[\"\']?)[^\s,}\"\']+', r"\1[redacted]", text)
+
+
+def listening(port):
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.15):
+            return True
+    except OSError:
+        return False
+
+
+def seed_persistent():
+    for name in ("home", "astrbot/data", "snowluma/config", "manager", "logs"):
+        (STATE / name).mkdir(parents=True, exist_ok=True)
+    # Copy each missing component once, never overwrite user-modified plugins.
+    seed = PRODUCT / "seed/astrbot/data"
+    for group in ("plugins", "site-packages"):
+        (DATA / group).mkdir(exist_ok=True)
+        for component in (seed / group).iterdir():
+            destination = DATA / group / component.name
+            if not destination.exists():
+                staging = DATA / group / (component.name + ".installing")
+                if staging.exists():
+                    shutil.rmtree(staging)
+                shutil.copytree(component, staging)
+                staging.rename(destination)
+    # /opt stays the pinned code/runtime; conversations/config/QQ profiles live
+    # under /persistent and survive HAP replacement and ordinary VM restarts.
+    config_file = DATA / "cmd_config.json"
+    config = read_json(config_file, {})
+    dashboard = config.setdefault("dashboard", {})
+    dashboard.update(host="0.0.0.0", port=6185)
+    platforms = config.setdefault("platform", [])
+    bridge = next((p for p in platforms if p.get("id") in ("qq", "napcat") and p.get("type") == "aiocqhttp"), None)
+    if bridge is None:
+        bridge = {"id": "qq", "type": "aiocqhttp", "enable": True, "ws_reverse_host": "127.0.0.1", "ws_reverse_port": 6199,
+                  "ws_reverse_token": text_secret(STATE / "manager/onebot-token")}
+        platforms.append(bridge)
+    if not bridge.get("ws_reverse_token"):
+        bridge["ws_reverse_token"] = text_secret(STATE / "manager/onebot-token")
+    text_secret(STATE / "manager/astrbot-initial-password", 20)
+    atomic_json(config_file, config)
+    snow = STATE / "snowluma"
+    atomic_json(snow / "manager.json", {"port": 6099, "desktopGeometry": "720x960"})
+    text_secret(snow / "bootstrap-password")
+    connection = snow / "config/onebot.json"
+    onebot = read_json(connection, {})
+    networks = onebot.setdefault("networks", {"httpServers": [], "httpClients": [], "wsServers": []})
+    clients = [x for x in networks.get("wsClients", []) if x.get("name") not in ("WhaleTalk-AstrBot", "BigFish-AstrBot")]
+    clients.append({"name": "WhaleTalk-AstrBot", "enabled": bridge.get("enable", True), "url": f"ws://127.0.0.1:{bridge.get('ws_reverse_port', 6199)}/ws",
+                    "role": "Universal", "accessToken": bridge["ws_reverse_token"], "messageFormat": "array", "reportSelfMessage": False, "reconnectIntervalMs": 5000})
+    networks["wsClients"] = clients
+    onebot.setdefault("statusCommand", {"enabled": True, "swallow": True, "trigger": "#sl", "cooldownSeconds": 5})
+    atomic_json(connection, onebot)
+    # Per-account snapshots inherit the same bridge on later boots too.
+    for account in (snow / "config").glob("onebot_*.json"):
+        old = read_json(account, {})
+        old.setdefault("networks", {})["wsClients"] = clients
+        atomic_json(account, old)
+    memory = DATA / "config/astrbot_plugin_memory_companion_config.json"
+    if not memory.exists():
+        atomic_json(memory, {
+            "memory_capture": {"enabled": True, "extract_stable_facts": True},
+            "scope_control": {"private_capture_enabled": True, "group_capture_enabled": True, "private_recall_enabled": True, "group_recall_enabled": True},
+            "memory_injection": {"enabled": True, "max_chars": 2400, "top_k": 6},
+            "retrieval": {"embedding_enabled": False, "embedding_provider_id": "", "mode": "basic", "rerank_provider_id": ""},
+            "source_semantic": {"enabled": False, "provider_id": ""},
+            "memory_humanization": {"enabled": True}, "memory_summary": {"enabled": False},
+            "memory_tools": {"enable_recall_tool": True, "enable_remember_tool": True, "allow_group_remember": False},
+            "identity": {"merge_platform_accounts": False},
+        })
+    group = DATA / "config/astrbot_plugin_group_chat_plus_config.json"
+    if not group.exists():
+        atomic_json(group, {"enable_group_chat": False, "enabled_groups": [], "enable_private_chat": False,
+                            "enable_web_panel": False, "web_panel_host": "127.0.0.1", "enable_image_processing": False,
+                            "enable_proactive_chat": False, "enable_proactive_ai_judge": False, "enable_memory_injection": False,
+                            "enable_humanize_mode": True, "enable_typing_simulator": True, "typing_speed": 22.0,
+                            "typing_max_delay": 2.0, "enable_typo_generator": False})
+
+
+class Supervisor:
+    def __init__(self):
+        self.commands = queue.Queue(maxsize=32)
+        self.lock = threading.RLock()
+        self.children = {}
+        self.started = time.monotonic()
+        self.shutdown_requested = False
+        self.desired = read_json(STATE / "manager/services.json", {"astrbot": True, "qq": True})
+        self.failures = {"astrbot": 0, "qq": 0, "qqweb": 0}
+        self.next_start = {"astrbot": 0, "qq": 0, "qqweb": 0}
+        self.token = ""
+        self.httpd = None
+        self.snow_relay = None
+
+    def log(self, message):
+        LOGS.mkdir(parents=True, exist_ok=True)
+        line = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + " " + redact(message)
+        print(line, flush=True)
+        with (LOGS / "manager.log").open("a") as f:
+            f.write(line + "\n")
+
+    def prepare(self):
+        seed_persistent()
+        for name in ("astrbot", "qq", "qqweb", "manager", "verify"):
+            (LOGS / (name + ".log")).touch(exist_ok=True)
+        bootstrap = read_json(SHARE / "whaletalk-bootstrap.json", {})
+        candidate = bootstrap.get("apiToken", "")
+        if re.fullmatch(r"[A-Za-z0-9_-]{32,256}", candidate):
+            (STATE / "manager/api-token").write_text(candidate)
+            (STATE / "manager/api-token").chmod(0o600)
+        self.token = text_secret(STATE / "manager/api-token")
+        # The HAP normally supplies its token before boot. This file permits the
+        # development smoke runner to discover a freshly generated guest token.
+        try:
+            atomic_json(SHARE / "whaletalk-connection.json", {"schema": 1, "apiToken": self.token, "ports": PORTS})
+        except OSError:
+            self.log("Host share not writable; using persistent API credentials")
+        desktop = MANAGER / "extensions/desktop"
+        desktop.mkdir(parents=True, exist_ok=True)
+        password = desktop / "password"
+        if not password.exists():
+            password.write_text(secrets.token_hex(4))
+            password.chmod(0o600)
+        if not (desktop / "vnc.passwd").exists():
+            subprocess.run(["/usr/bin/x11vnc", "-storepasswd", password.read_text().strip(), str(desktop / "vnc.passwd")], check=True, capture_output=True)
+        authority = desktop / "Xauthority"
+        if not authority.exists() or not authority.stat().st_size:
+            subprocess.run(["/usr/bin/xauth", "-f", str(authority), "add", ":20", ".", secrets.token_hex(16)], check=True, capture_output=True)
+        Path("/tmp/.X11-unix").mkdir(mode=0o1777, exist_ok=True)
+        machine_id = Path("/etc/machine-id")
+        if machine_id.is_symlink():
+            machine_id.unlink()
+        if not machine_id.exists() or len(machine_id.read_text().strip()) != 32:
+            machine_id.write_text(uuid.uuid4().hex + "\n")
+        self.log("WhaleTalk guest initialized; bundled plugins and role libraries retained")
+
+    def command(self, name):
+        env = dict(os.environ, HOME="/persistent/home", ASTRBOT_ROOT="/persistent/astrbot",
+                   PYTHONPATH="/manager:/persistent/astrbot/data/site-packages", PYTHONUNBUFFERED="1",
+                   OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1")
+        if name == "verify":
+            return ["/opt/astrbot-venv/bin/python", "-c", "import quart,fastapi,faiss,numpy,cryptography,PIL,pydantic_core; print('whaletalk-runtime-ok',flush=True)"], "/", env
+        if name == "astrbot":
+            env.update(ASTRBOT_MANAGER_OWNED_SERVICE="1", ASTRBOT_MANAGER_OBSERVATION_NONCE=uuid.uuid4().hex,
+                       ASTRBOT_DASHBOARD_INITIAL_PASSWORD=(STATE / "manager/astrbot-initial-password").read_text().strip())
+            return ["/opt/astrbot-venv/bin/python", "/manager/launch_astrbot.py", "--webui-dir", "/opt/astrbot/astrbot/dashboard/dist"], "/opt/astrbot", env
+        if name == "qq":
+            return ["/usr/bin/python3", "/manager/extensions/snowluma/launch.py"], "/", env
+        # The upstream launcher keeps Xvfb, QQ, SnowLuma and x11vnc together.
+        # A separate relay binds the guest ethernet address for QEMU hostfwd.
+        return ["/usr/bin/websockify", "--web=/usr/share/novnc", "0.0.0.0:6081", "127.0.0.1:5920"], "/", env
+
+    def launch(self, name):
+        command, cwd, env = self.command(name)
+        generation = uuid.uuid4().hex
+        env["WHALETALK_OWNED_GENERATION"] = generation
+        with (LOGS / (name + ".log")).open("ab", buffering=0) as log:
+            process = subprocess.Popen(command, cwd=cwd, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+        self.children[name] = {"process": process, "started": time.monotonic(), "groups": {process.pid}, "exit": None, "generation": generation}
+        self.log("Started " + name)
+
+    def remember_descendants(self):
+        # Record new sessions created by Electron and the QQ launcher, so an
+        # abrupt launcher crash still permits cleanup of its owned descendants.
+        processes = {}
+        generations = {}
+        for item in Path("/proc").iterdir():
+            if not item.name.isdecimal():
+                continue
+            try:
+                stat = (item / "stat").read_text().rsplit(")", 1)[1].split()
+                processes[int(item.name)] = (int(stat[1]), int(stat[2]))
+                for variable in (item / "environ").read_bytes().split(b"\0"):
+                    if variable.startswith(b"WHALETALK_OWNED_GENERATION="):
+                        generations[int(item.name)] = variable.split(b"=", 1)[1].decode("ascii", errors="ignore")
+                        break
+            except (OSError, ValueError, IndexError):
+                pass
+        for child in self.children.values():
+            owned = {child["process"].pid}
+            for _ in range(16):
+                additions = {pid for pid, (parent, group) in processes.items() if parent in owned}
+                if additions <= owned:
+                    break
+                owned |= additions
+            child["groups"].update(group for pid, (parent, group) in processes.items() if pid in owned and group > 1)
+            # An abrupt launcher death may reparent a new session before the
+            # next tree snapshot. Inherited per-launch identity still owns it.
+            if child.get("generation"):
+                child["groups"].update(group for pid, (parent, group) in processes.items()
+                                       if generations.get(pid) == child["generation"] and group > 1)
+
+    def reap(self):
+        while True:
+            try:
+                pid, code = os.waitpid(-1, os.WNOHANG)
+            except ChildProcessError:
+                break
+            if pid == 0:
+                break
+            for child in self.children.values():
+                if child["process"].pid == pid:
+                    child["process"].returncode = os.waitstatus_to_exitcode(code)
+                    child["exit"] = child["process"].returncode
+
+    @staticmethod
+    def signal_groups(child, number):
+        for group in child["groups"]:
+            try:
+                os.killpg(group, number)
+            except ProcessLookupError:
+                pass
+
+    def stop(self, name):
+        child = self.children.get(name)
+        if not child:
+            return
+        self.remember_descendants()
+        self.signal_groups(child, signal.SIGTERM)
+        deadline = time.monotonic() + 10
+        while child["exit"] is None and time.monotonic() < deadline:
+            self.reap()
+            time.sleep(0.1)
+        self.signal_groups(child, signal.SIGKILL)
+        self.reap()
+        self.children.pop(name, None)
+        self.log("Stopped " + name)
+
+    def status(self):
+        services = {}
+        for name in ("astrbot", "qq"):
+            child = self.children.get(name)
+            alive = child is not None and child["exit"] is None
+            ready = alive and (listening(6185) if name == "astrbot" else listening(6099) and listening(5920))
+            state = "running" if ready else "starting" if alive else "failed" if self.desired.get(name) else "stopped"
+            services[name] = {"state": state, "pid": child["process"].pid if alive else None, "ready": bool(ready)}
+            if name == "qq":
+                services[name].update(accountState="unknown", onebotState="unknown")
+        config = read_json(DATA / "cmd_config.json", {})
+        versions = read_json(PRODUCT / "build-receipt.json", {}).get("base", {}).get("components", {})
+        verification = self.children.get("verify", {})
+        runtime_check = "pending" if verification.get("exit") is None else "passed" if verification["exit"] == 0 else "failed"
+        return {"schema": 1, "configured": bool(config.get("provider")), "services": services, "ports": PORTS, "runtimeCheck": runtime_check,
+                "versions": {key: value.get("version", "") for key, value in versions.items() if isinstance(value, dict)},
+                "uptimeSeconds": int(time.monotonic() - self.started), "shutdownPending": self.shutdown_requested}
+
+    def operate(self, service, action):
+        targets = ("astrbot", "qq") if service == "all" else (service,)
+        for name in targets:
+            if action in ("stop", "restart"):
+                if name == "qq":
+                    self.stop("qqweb")
+                self.stop(name)
+            self.desired[name] = action != "stop"
+            self.next_start[name] = 0
+            self.failures[name] = 0
+        atomic_json(STATE / "manager/services.json", self.desired)
+
+    def rotate_logs(self):
+        for name in ("astrbot", "qq", "qqweb", "manager", "verify"):
+            path = LOGS / (name + ".log")
+            if path.stat().st_size > 4 * 1024 * 1024:
+                # Preserve the open file descriptor used by running subprocesses.
+                with path.open("r+b") as f:
+                    f.seek(-1024 * 1024, os.SEEK_END)
+                    tail = f.read()
+                    f.seek(0)
+                    f.write(tail)
+                    f.truncate()
+
+    def run(self):
+        self.prepare()
+        self.httpd = ThreadingHTTPServer(("0.0.0.0", PORTS["manager"]), handler(self))
+        self.httpd.daemon_threads = True
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        self.snow_relay = tcp_relay(("0.0.0.0", 5099), ("127.0.0.1", 6099))
+        threading.Thread(target=self.snow_relay.serve_forever, daemon=True).start()
+        signal.signal(signal.SIGTERM, lambda *_: setattr(self, "shutdown_requested", True))
+        signal.signal(signal.SIGINT, lambda *_: setattr(self, "shutdown_requested", True))
+        self.log("Management API ready on guest port 8765")
+        self.launch("verify")
+        last_rotation = 0
+        while not self.shutdown_requested:
+            with self.lock:
+                self.reap()
+                self.remember_descendants()
+                for _ in range(8):
+                    try:
+                        service, action = self.commands.get_nowait()
+                    except queue.Empty:
+                        break
+                    self.operate(service, action)
+                for name in ("astrbot", "qq", "qqweb"):
+                    wanted = self.desired.get("qq" if name == "qqweb" else name, False)
+                    child = self.children.get(name)
+                    if child and child["exit"] is not None:
+                        self.log(name + " exited " + str(child["exit"]))
+                        self.signal_groups(child, signal.SIGKILL)
+                        self.children.pop(name, None)
+                        self.failures[name] += 1
+                        self.next_start[name] = time.monotonic() + min(60, 2 ** min(self.failures[name], 6))
+                    if wanted and name not in self.children and time.monotonic() >= self.next_start[name]:
+                        try:
+                            self.launch(name)
+                        except OSError as exc:
+                            self.log(name + " launch failed: " + str(exc))
+                            self.next_start[name] = time.monotonic() + 30
+                if time.monotonic() - last_rotation > 60:
+                    self.rotate_logs()
+                    last_rotation = time.monotonic()
+            time.sleep(0.25)
+        self.log("Orderly guest shutdown requested")
+        for name in ("qqweb", "qq", "astrbot", "verify"):
+            self.stop(name)
+        self.httpd.shutdown()
+        self.snow_relay.shutdown()
+        self.reap()
+        os.sync()
+        if os.getpid() == 1:
+            ctypes.CDLL(None).reboot(0x4321FEDC)  # LINUX_REBOOT_CMD_POWER_OFF
+            while True:
+                self.reap()
+                time.sleep(1)
+
+
+def tcp_relay(address, destination):
+    """Keep SnowLuma's HTTP, assets and WebSocket URLs intact across hostfwd."""
+    class Relay(socketserver.BaseRequestHandler):
+        def handle(self):
+            try:
+                with socket.create_connection(destination, timeout=5) as upstream:
+                    self.request.settimeout(15)
+                    upstream.settimeout(15)
+                    peers = (self.request, upstream)
+                    while True:
+                        ready, _, _ = select.select(peers, [], [], 120)
+                        if not ready:
+                            continue
+                        for source in ready:
+                            data = source.recv(65536)
+                            if not data:
+                                return
+                            target = upstream if source is self.request else self.request
+                            target.sendall(data)
+            except OSError:
+                pass
+    class Server(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+    return Server(address, Relay)
+
+
+def handler(supervisor):
+    class Handler(BaseHTTPRequestHandler):
+        server_version = "WhaleTalk/1"
+        def log_message(self, *_):
+            pass  # Neither credentials nor request bodies enter access logs.
+
+        def respond(self, code, value):
+            data = json.dumps(value, ensure_ascii=False).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def authorized(self):
+            return hmac.compare_digest(self.headers.get("Authorization", ""), "Bearer " + supervisor.token)
+
+        def do_GET(self):
+            parsed = urlsplit(self.path)
+            if parsed.path == "/health":
+                return self.respond(200, {"ok": True, "app": "WhaleTalk", "schema": 1})
+            if not self.authorized():
+                return self.respond(401, {"ok": False, "error": "unauthorized"})
+            if parsed.path == "/api/v1/status":
+                with supervisor.lock:
+                    return self.respond(200, supervisor.status())
+            if parsed.path == "/api/v1/credentials":
+                return self.respond(200, {"dashboardUsername": "astrbot", "dashboardPassword": (STATE / "manager/astrbot-initial-password").read_text().strip(),
+                                           "vncPassword": (MANAGER / "extensions/desktop/password").read_text().strip(),
+                                           "snowlumaPassword": (STATE / "snowluma/bootstrap-password").read_text().strip()})
+            if parsed.path == "/api/v1/logs":
+                query = parse_qs(parsed.query)
+                service = query.get("service", ["manager"])[0]
+                if service not in ("manager", "astrbot", "qq"):
+                    return self.respond(400, {"ok": False, "error": "invalid service"})
+                try:
+                    count = min(500, max(1, int(query.get("lines", ["100"])[0])))
+                except ValueError:
+                    return self.respond(400, {"ok": False, "error": "invalid line count"})
+                path = LOGS / (service + ".log")
+                with path.open("rb") as f:
+                    total = f.seek(0, os.SEEK_END)
+                    f.seek(max(0, total - 65536))
+                    lines = f.read().decode("utf-8", errors="replace").splitlines()
+                return self.respond(200, {"service": service, "lines": [redact(line) for line in lines[-count:]], "truncated": total > 65536 or len(lines) > count})
+            if parsed.path == "/api/v1/library":
+                kind = parse_qs(parsed.query).get("kind", ["personas"])[0]
+                names = {"personas": "persona-library.json", "tavern": "tavern-library.json", "labels": "config-labels.json"}
+                if kind not in names:
+                    return self.respond(400, {"ok": False, "error": "invalid library"})
+                return self.respond(200, read_json(PRODUCT / "assets/bigfish" / names[kind], {}))
+            return self.respond(404, {"ok": False, "error": "not found"})
+
+        def do_POST(self):
+            if not self.authorized():
+                return self.respond(401, {"ok": False, "error": "unauthorized"})
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 <= length <= 16384:
+                    raise ValueError("request too large")
+                body = json.loads(self.rfile.read(length) or "{}")
+                if not isinstance(body, dict):
+                    raise ValueError("request must be an object")
+            except (ValueError, TypeError):
+                return self.respond(400, {"ok": False, "error": "invalid JSON request"})
+            if self.path == "/api/v1/shutdown":
+                self.respond(202, {"ok": True})
+                supervisor.shutdown_requested = True
+                return
+            if self.path == "/api/v1/control":
+                service, action = body.get("service"), body.get("action")
+                if service not in ("all", "astrbot", "qq") or action not in ("start", "stop", "restart"):
+                    return self.respond(400, {"ok": False, "error": "invalid service/action"})
+                try:
+                    supervisor.commands.put_nowait((service, action))
+                except queue.Full:
+                    return self.respond(429, {"ok": False, "error": "command queue full"})
+                return self.respond(202, {"ok": True, "queued": True})
+            return self.respond(404, {"ok": False, "error": "not found"})
+    return Handler
+
+
+def main():
+    Supervisor().run()
+
+
+if __name__ == "__main__":
+    main()

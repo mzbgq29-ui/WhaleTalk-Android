@@ -1,0 +1,15 @@
+oh_modules/
+node_modules/
+.hvigor/
+.cxx/
+build/
+delivery/
+local.properties
+**/build/
+**/libs/
+**/resources/rawfile/vm/kernel_aarch64
+**/resources/rawfile/vm/rootfs_aarch64.qcow2
+**/resources/rawfile/vm/runtime-manifest.json
+.local/
+__pycache__/
+build-evidence/

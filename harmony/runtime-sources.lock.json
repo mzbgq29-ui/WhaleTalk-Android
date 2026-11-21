@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "tools": {
+    "url": "https://repo.huaweicloud.com/harmonyos/ohpm/5.1.0/commandline-tools-linux-x64-5.1.0.840.zip",
+    "bytes": 2153496473,
+    "apiVersion": 18,
+    "hvigorVersion": "5.18.6"
+  },
+  "hish": {
+    "repository": "https://github.com/harmoninux/HiSH.git",
+    "commit": "4c0e7f2b21eb977144ffa7e7d472a27a0192f84c"
+  },
+  "qemu": {
+    "repository": "https://github.com/harmoninux/qemu.git",
+    "commit": "50ce7096eb6b338bee88a0960c543f93f1b16959",
+    "branch": "hish-libqemu",
+    "tcgInterpreter": true
+  },
+  "glib": {
+    "repository": "https://github.com/GNOME/glib.git",
+    "commit": "8200545eceb6b788ff5f33292f95ec51905562ad",
+    "tag": "2.82.0"
+  },
+  "assets": {
+    "kernel": {
+      "url": "https://github.com/harmoninux/linux-config/releases/download/kernel-20260228/kernel_aarch64",
+      "sha256": "914e3d790e191c17e7e1a845418c1deaede5bff318eb69754382f6deadd156f5",
+      "bytes": 12980736
+    },
+    "ubuntu": {
+      "url": "https://github.com/harmoninux/linux-config/releases/download/rootfs-20251213/ubuntu-base-24.04.zip",
+      "sha256": "a04836990d073569814b9ffbef64664a9aa908a20454b94b32f21a40c9879a49",
+      "bytes": 81595607
+    },
+    "upstreamJitLibrariesReferenceOnly": {
+      "url": "https://github.com/harmoninux/qemu/releases/download/hish-20260110/libs.zip",
+      "sha256": "684979be9f5101d124297e5cbbef6da27d1b2873dfc1d9a57eb80cdb9f8f4d74",
+      "bytes": 29786658,
+      "containsTci": false
+    }
+  }
+}

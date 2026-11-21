@@ -1,0 +1,225 @@
+name: Build HarmonyOS native phone HAP
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/harmonyos-native']
+    paths:
+      - 'harmony/**'
+      - '.github/workflows/harmony-cloud-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native_core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Free hosted runner disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /usr/share/swift \
+            /usr/local/share/swift /opt/hostedtoolcache/CodeQL /opt/ghc /usr/local/.ghcup
+          df -h /
+      - uses: actions/cache@v4
+        id: native_cache
+        with:
+          path: |
+            harmony/entry/libs/arm64-v8a/
+            harmony/entry/src/main/resources/rawfile/vm/keymaps/
+            harmony/entry/src/main/resources/rawfile/vm/efi-virtio.rom
+            harmony/build-evidence/native-SHA256SUMS
+          key: harmony-tci-api18-v1-${{ hashFiles('harmony/runtime-sources.lock.json', 'harmony/ci/build-tci.sh', 'harmony/ci/stage-native-libs.py') }}
+      - uses: actions/setup-node@v4
+        if: steps.native_cache.outputs.cache-hit != 'true'
+        with:
+          node-version: '18'
+      - uses: actions/setup-java@v4
+        if: steps.native_cache.outputs.cache-hit != 'true'
+        with:
+          distribution: zulu
+          java-version: '17'
+      - name: Install native build prerequisites
+        if: steps.native_cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config curl wget unzip zip ripgrep patchelf \
+            git flex bison autoconf automake libtool gettext texinfo \
+            libcurl4-openssl-dev libncurses-dev python3-venv python3-pip
+          python3 -m venv "$RUNNER_TEMP/harmony-build-venv"
+          "$RUNNER_TEMP/harmony-build-venv/bin/pip" install meson==1.7.2
+          echo "$RUNNER_TEMP/harmony-build-venv/bin" >> "$GITHUB_PATH"
+      - name: Install official HarmonyOS API18 toolchain
+        if: steps.native_cache.outputs.cache-hit != 'true'
+        run: bash harmony/ci/setup-harmony-sdk.sh "$RUNNER_TEMP/harmony-tools" "$RUNNER_TEMP/harmony-env.sh"
+      - name: Build TCI core for phones
+        if: steps.native_cache.outputs.cache-hit != 'true'
+        run: |
+          source "$RUNNER_TEMP/harmony-env.sh"
+          mkdir -p harmony/build-evidence
+          bash harmony/ci/build-tci.sh harmony 2>&1 | tee harmony/build-evidence/tci-build.log
+      - name: Fetch and verify Linux kernel
+        run: |
+          python3 harmony/ci/fetch-vm-assets.py harmony
+          mkdir -p harmony/build-evidence
+          cp harmony/runtime-sources.lock.json harmony/build-evidence/
+          test -s harmony/entry/libs/arm64-v8a/libqemu-system-aarch64-tci.so
+      - name: Upload native runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-runtime-${{ github.sha }}
+          path: |
+            harmony/entry/libs/arm64-v8a/
+            harmony/entry/src/main/resources/rawfile/vm/kernel_aarch64
+            harmony/entry/src/main/resources/rawfile/vm/keymaps/
+            harmony/entry/src/main/resources/rawfile/vm/efi-virtio.rom
+            harmony/build-evidence/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload native diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-diagnostics-${{ github.run_number }}
+          path: |
+            harmony/build-evidence/
+            ${{ runner.temp }}/whaletalk-tci/hish/deps/libqemu/temp/qemu/build/meson-logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  guest_image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Free hosted runner disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /usr/share/swift \
+            /usr/local/share/swift /opt/hostedtoolcache/CodeQL /opt/ghc /usr/local/.ghcup
+          df -h /
+      - name: Install Linux guest build and emulator tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-utils qemu-system-arm e2fsprogs zstd curl python3
+      - uses: actions/cache@v4
+        id: guest_cache
+        with:
+          path: ${{ runner.temp }}/whaletalk-guest-cache/
+          key: whaletalk-guest-v1-${{ hashFiles('harmony/tools/build_guest.py', 'harmony/guest/**') }}
+      - name: Build full Ubuntu QQ AstrBot guest
+        if: steps.guest_cache.outputs.cache-hit != 'true'
+        run: |
+          curl --fail --silent --show-error --location --retry 3 \
+            'https://github.com/mzbgq29-ui/WhaleTalk-Android/releases/download/v1.7.0/WhaleTalk-Android-1.7.0-arm64-v8a.apk' \
+            -o "$RUNNER_TEMP/whaletalk-1.7.0.apk"
+          python3 harmony/tools/check_guest_tools.py
+          mkdir -p harmony/build-evidence
+          python3 harmony/tools/build_guest.py --apk "$RUNNER_TEMP/whaletalk-1.7.0.apk" \
+            --output "$RUNNER_TEMP/whaletalk-guest-build" 2>&1 | tee harmony/build-evidence/guest-build.log
+          mkdir -p "$RUNNER_TEMP/whaletalk-guest-cache"
+          mv "$RUNNER_TEMP/whaletalk-guest-build/whaletalk-ubuntu-arm64.qcow2" "$RUNNER_TEMP/whaletalk-guest-cache/"
+          cp "$RUNNER_TEMP/whaletalk-guest-build/build-receipt.json" "$RUNNER_TEMP/whaletalk-guest-cache/"
+          rm -rf "$RUNNER_TEMP/whaletalk-guest-build" "$RUNNER_TEMP/whaletalk-1.7.0.apk"
+      - name: Boot and verify actual ARM64 guest services
+        run: |
+          python3 harmony/ci/fetch-vm-assets.py harmony
+          mkdir -p harmony/build-evidence
+          cp "$RUNNER_TEMP/whaletalk-guest-cache/build-receipt.json" harmony/build-evidence/guest-build-receipt.json
+          python3 harmony/tools/smoke_guest.py \
+            --kernel harmony/entry/src/main/resources/rawfile/vm/kernel_aarch64 \
+            --image "$RUNNER_TEMP/whaletalk-guest-cache/whaletalk-ubuntu-arm64.qcow2" \
+            --output harmony/build-evidence/guest-smoke --timeout 600
+      - name: Stage verified guest disk
+        run: |
+          cp "$RUNNER_TEMP/whaletalk-guest-cache/whaletalk-ubuntu-arm64.qcow2" \
+            harmony/entry/src/main/resources/rawfile/vm/rootfs_aarch64.qcow2
+          rm -f harmony/build-evidence/guest-smoke/smoke-overlay.qcow2
+          rm -rf harmony/build-evidence/guest-smoke/share
+      - name: Upload tested guest image
+        uses: actions/upload-artifact@v4
+        with:
+          name: guest-runtime-${{ github.sha }}
+          path: |
+            harmony/entry/src/main/resources/rawfile/vm/rootfs_aarch64.qcow2
+            harmony/build-evidence/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload guest diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guest-diagnostics-${{ github.run_number }}
+          path: |
+            harmony/build-evidence/guest-build.log
+            harmony/build-evidence/guest-build-receipt.json
+            harmony/build-evidence/guest-smoke/*.log
+            harmony/build-evidence/guest-smoke/*.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  hap:
+    needs: [native_core, guest_image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Free hosted runner disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /usr/share/swift \
+            /usr/local/share/swift /opt/hostedtoolcache/CodeQL /opt/ghc /usr/local/.ghcup
+          df -h /
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+      - name: Install packaging prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends curl unzip zip ripgrep python3
+      - name: Download verified native core
+        uses: actions/download-artifact@v4
+        with:
+          name: native-runtime-${{ github.sha }}
+          path: harmony
+      - name: Download cloud-tested guest
+        uses: actions/download-artifact@v4
+        with:
+          name: guest-runtime-${{ github.sha }}
+          path: harmony
+      - name: Install official HarmonyOS API18 toolchain
+        run: bash harmony/ci/setup-harmony-sdk.sh "$RUNNER_TEMP/harmony-tools" "$RUNNER_TEMP/harmony-env.sh"
+      - name: Assemble and audit complete unsigned HAP
+        run: |
+          source "$RUNNER_TEMP/harmony-env.sh"
+          bash harmony/ci/assemble-unsigned.sh harmony
+      - uses: actions/upload-artifact@v4
+        with:
+          name: whaletalk-harmony-api18-arm64-unsigned-${{ github.run_number }}
+          path: harmony/delivery/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload packaging diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hap-diagnostics-${{ github.run_number }}
+          path: |
+            harmony/build-evidence/
+            harmony/.hvigor/report/
+          if-no-files-found: ignore
+          retention-days: 7

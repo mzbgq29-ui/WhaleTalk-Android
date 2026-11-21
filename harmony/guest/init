@@ -1,0 +1,121 @@
+#!/usr/bin/python3
+"""Minimal Linux PID 1 for the dedicated WhaleTalk QEMU guest.
+
+The host HAP never requests mount/chroot/ptrace privileges. These operations
+belong to the guest's Linux kernel and its private virtual disk.
+"""
+import ctypes
+import errno
+import fcntl
+import os
+from pathlib import Path
+import socket
+import struct
+import sys
+import time
+
+
+def log(message):
+    print("WhaleTalk init: " + message, flush=True)
+
+
+def mount(source, target, kind, flags=0, data=""):
+    Path(target).mkdir(parents=True, exist_ok=True)
+    libc = ctypes.CDLL(None, use_errno=True)
+    result = libc.mount(source.encode(), target.encode(), kind.encode(), ctypes.c_ulong(flags), data.encode())
+    if result and ctypes.get_errno() != errno.EBUSY:
+        raise OSError(ctypes.get_errno(), "mount " + target)
+
+
+def configure_network():
+    # QEMU user networking's documented default subnet. No host or guest DHCP
+    # executable is required, which keeps Android's stripped Ubuntu image usable.
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    def flags(name):
+        value = fcntl.ioctl(sock, 0x8913, struct.pack("16sH14x", name.encode(), 0))
+        mask = struct.unpack_from("H", value, 16)[0] | 0x1
+        fcntl.ioctl(sock, 0x8914, struct.pack("16sH14x", name.encode(), mask))
+    def address(name, command, value):
+        fcntl.ioctl(sock, command, struct.pack("16sH2x4s8x", name.encode(), socket.AF_INET, socket.inet_aton(value)))
+    flags("lo")
+    names = [p.name for p in Path("/sys/class/net").iterdir() if p.name != "lo"]
+    if not names:
+        raise RuntimeError("No virtio network interface")
+    interface = names[0]
+    address(interface, 0x8916, "10.0.2.15")
+    address(interface, 0x891c, "255.255.255.0")
+    flags(interface)
+    class SockAddr(ctypes.Structure):
+        _fields_ = [("family", ctypes.c_ushort), ("data", ctypes.c_ubyte * 14)]
+    class Route(ctypes.Structure):
+        _fields_ = [("pad1", ctypes.c_ulong), ("dst", SockAddr), ("gateway", SockAddr), ("mask", SockAddr),
+                    ("flags", ctypes.c_ushort), ("pad2", ctypes.c_short), ("pad3", ctypes.c_ulong),
+                    ("pad4", ctypes.c_void_p), ("metric", ctypes.c_short), ("dev", ctypes.c_char_p),
+                    ("mtu", ctypes.c_ulong), ("window", ctypes.c_ulong), ("irtt", ctypes.c_ushort)]
+    def sockaddr(ip):
+        result = SockAddr()
+        result.family = socket.AF_INET
+        result.data[:] = struct.pack("!H4s8x", 0, socket.inet_aton(ip))
+        return result
+    route = Route()
+    route.dst, route.mask, route.gateway = sockaddr("0.0.0.0"), sockaddr("0.0.0.0"), sockaddr("10.0.2.2")
+    route.flags = 3
+    route.dev = interface.encode()
+    try:
+        fcntl.ioctl(sock, 0x890b, bytes(route))
+    except OSError as exc:
+        if exc.errno != errno.EEXIST:
+            raise
+    sock.close()
+    resolv = Path("/etc/resolv.conf")
+    if resolv.is_symlink():
+        resolv.unlink()
+    resolv.write_text("nameserver 10.0.2.3\nnameserver 1.1.1.1\n")
+    log(interface + " configured at 10.0.2.15")
+
+
+if os.getpid() != 1:
+    raise SystemExit("/init is only for the dedicated virtual machine's PID 1")
+os.umask(0o077)
+for source, target, kind, data in (
+    ("proc", "/proc", "proc", ""), ("sysfs", "/sys", "sysfs", ""),
+    ("devtmpfs", "/dev", "devtmpfs", "mode=0755"), ("tmpfs", "/run", "tmpfs", "mode=0755,size=64m"),
+    ("tmpfs", "/tmp", "tmpfs", "mode=1777,size=256m"), ("tmpfs", "/dev/shm", "tmpfs", "mode=1777,size=256m"),
+    ("devpts", "/dev/pts", "devpts", "mode=0620,ptmxmode=0666"),
+):
+    try:
+        mount(source, target, kind, data=data)
+    except OSError as exc:
+        log(str(exc))
+try:
+    mount("hostshare", "/hostshare", "9p", data="trans=virtio,version=9p2000.L,msize=262144")
+except OSError as exc:
+    log("Host share unavailable: " + str(exc))
+try:
+    configure_network()
+except Exception as exc:
+    log("Network initialization failed: " + str(exc))
+for path, target in (("/dev/fd", "/proc/self/fd"), ("/dev/stdin", "/proc/self/fd/0"),
+                     ("/dev/stdout", "/proc/self/fd/1"), ("/dev/stderr", "/proc/self/fd/2")):
+    try:
+        Path(path).symlink_to(target)
+    except FileExistsError:
+        pass
+os.environ.update(PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", LANG="C.UTF-8", HOME="/root")
+sys.path.insert(0, "/manager")
+while True:
+    try:
+        import whaletalk_supervisor
+        whaletalk_supervisor.main()
+        break
+    except BaseException as exc:
+        log("Supervisor failure: " + repr(exc))
+        # A failing PID 1 must stay alive and reap even while reporting its error.
+        end = time.monotonic() + 10
+        while time.monotonic() < end:
+            try:
+                while os.waitpid(-1, os.WNOHANG)[0]:
+                    pass
+            except ChildProcessError:
+                pass
+            time.sleep(0.2)

@@ -1,0 +1,1 @@
+{"name":"entry","version":"0.1.0","description":"鲸语鸿蒙原生入口","dependencies":{"libwhaletalk_vm.so":"file:./src/main/cpp/types/libwhaletalk_vm"}}

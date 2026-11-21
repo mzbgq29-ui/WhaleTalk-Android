@@ -9,6 +9,7 @@
 - [安装与上手教程](docs/INSTALL.md)：安装、准备环境、QQ 登录、模型 API、人设及后台设置。
 - [常见问题与排障](docs/TROUBLESHOOTING.md)：QQ 在线但不回复、模型错误、环境准备失败。
 - [源码构建与签名](docs/BUILD.md)：开发环境、运行资源、构建命令和签名兼容。
+- [纯血鸿蒙开发版](harmony/README.md)：原生 HAP、本机 Linux 执行核与 GitHub Actions 云编译。
 - [消息通道说明](docs/消息通道.md) · [历史验证范围](VALIDATION.md) · [第三方依赖与许可](THIRD_PARTY.md)
 
 **[下载鲸语安装包和源码](https://github.com/mzbgq29-ui/WhaleTalk-Android/releases/latest)**。解压 APK ZIP 后安装其中的 APK。鲸语采用独立包名，与旧版并存；如需迁移数据，请先在旧版导出备份，再在鲸语中导入。
