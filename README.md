@@ -1,42 +1,85 @@
-# 鲸语 WhaleTalk
+<div align="center">
 
-鲸语是面向 Android 手机的 QQ 陪伴机器人应用，提供原生界面管理模型、角色、人设和插件。项目由 **mzbgq** 维护；运行层使用 PRoot、Ubuntu、AstrBot、SnowLuma 和 Linux QQ。文字模型使用你自己配置的云端 API，默认无需额外的记忆 API，语音保持关闭。
+<img src="app/src/main/res/drawable-nodpi/whale_girl.png" alt="鲸语 WhaleTalk" width="120" style="border-radius: 28px;" />
 
-> 当前版本为「鲸语 WhaleTalk」**1.8.0**。打开应用即可查看 QQ 登录、消息通道和模型状态。设置可以立即应用，也可以留到下次启动 AstrBot 时应用。
+# 鲸语 · WhaleTalk
 
-## 开始使用
+**无需 Root，在 Android 手机上直接运行的 QQ 机器人与角色陪伴应用**
 
-- [安装与上手教程](docs/INSTALL.md)：安装、准备环境、QQ 登录、模型 API、人设及后台设置。
-- [常见问题与排障](docs/TROUBLESHOOTING.md)：QQ 在线但不回复、模型错误、环境准备失败。
-- [源码构建与签名](docs/BUILD.md)：开发环境、运行资源、构建命令和签名兼容。
-- [消息通道说明](docs/消息通道.md) · [历史验证范围](VALIDATION.md) · [第三方依赖与许可](THIRD_PARTY.md)
+[![Release](https://img.shields.io/github/v/release/mzbgq29-ui/WhaleTalk-Android?label=Release&color=0066D6&style=flat-square)](https://github.com/mzbgq29-ui/WhaleTalk-Android/releases/latest)
+[![Platform](https://img.shields.io/badge/Android-8.0%2B%20ARM64-1D8A6E?style=flat-square)](https://github.com/mzbgq29-ui/WhaleTalk-Android/releases/latest)
+[![CI](https://img.shields.io/github/actions/workflow/status/mzbgq29-ui/WhaleTalk-Android/ci.yml?branch=main&label=Source%20Checks&style=flat-square)](https://github.com/mzbgq29-ui/WhaleTalk-Android/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/mzbgq29-ui/WhaleTalk-Android?color=4E5D73&style=flat-square)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/mzbgq29-ui/WhaleTalk-Android?style=flat-square)](https://github.com/mzbgq29-ui/WhaleTalk-Android/stargazers)
 
-**[下载鲸语安装包和源码](https://github.com/mzbgq29-ui/WhaleTalk-Android/releases/latest)**。解压 APK ZIP 后安装其中的 APK。鲸语采用独立包名，与旧版并存；如需迁移数据，请先在旧版导出备份，再在鲸语中导入。
+[下载安装包](https://github.com/mzbgq29-ui/WhaleTalk-Android/releases/latest) · [上手教程](docs/INSTALL.md) · [更新日志](docs/CHANGELOG.md) · [排障指南](docs/TROUBLESHOOTING.md) · [源码构建](docs/BUILD.md)
 
-## 功能
+</div>
 
-- 手机内管理 QQ 接入、回复范围、云端模型、插件、知识库和聊天记录。
-- 内置酒馆角色仓库，支持导入 V1/V2/V3 PNG 或 JSON 角色卡，静态适配开场和世界书；不执行角色卡脚本。
-- 内置陪伴与记忆能力，使用已有聊天模型；可在应用内查看运行日志和备份设置。
-- 修复本机 IPC 路径过长导致的消息通道发现问题；QQ 仍为 Linux ARM64 3.2.35-54395（默认锁定，防止热更新替换 hook 模块），SnowLuma 为 2.4.2。
+---
 
-## 界面截图
+> [!TIP]
+> **鲸语 `v1.8.0` 现已发布**：全面重构 Jetpack Compose 原生界面——全新瓷白 / 深海夜蓝与鲸海蓝配色体系、支持点按与横向滑动切页的悬浮式 **Liquid Glass 液态玻璃底栏**、一体式胶囊聊天输入栏以及带矢量图标徽章的分组卡片。
 
-以下是鲸语 1.7.0 在 Android 模拟器中的应用界面。
+## 核心特性
 
-<p align="center">
-  <a href="docs/images/whaletalk-1.7.0/home.png"><img src="docs/images/whaletalk-1.7.0/home.png" alt="鲸语运行首页" width="190"></a>
-  <a href="docs/images/whaletalk-1.7.0/chat.png"><img src="docs/images/whaletalk-1.7.0/chat.png" alt="鲸语聊天页" width="190"></a>
-  <a href="docs/images/whaletalk-1.7.0/tools.png"><img src="docs/images/whaletalk-1.7.0/tools.png" alt="鲸语工具页" width="190"></a>
-  <a href="docs/images/whaletalk-1.7.0/diagnostics.png"><img src="docs/images/whaletalk-1.7.0/diagnostics.png" alt="鲸语快速排障" width="190"></a>
-</p>
+- **原生物理质感交互**：基于 Jetpack Compose 与 Material 3 深度定制，提供运行首页、本机对话、工具中心、人设仓库与快捷排障入口；配置改动支持立即热应用或留到下次启动时生效。
+- **开箱即用，免 Root 本机运行**：完整安装包内置 PRoot、Ubuntu 运行层、AstrBot 与 SnowLuma（Linux QQ）；文字模型直连你配置的云端 Chat Completions API，默认无需额外向量/嵌入或语音服务费用。
+- **酒馆角色卡与陪伴增强**：内置角色仓库与离线酒馆卡导入（支持 V1 / V2 / V3 PNG 与 JSON，静态适配开场与世界书，不执行外部脚本）；随包提供长期记忆与拟人分段回复增强。
+- **精细控制与规则试算**：可配置主人 QQ、好友与群允许名单、唤醒词、@ 回复及引用样式，并支持在页面内直接试算消息是否会被回复。
+- **掉线守护与完整备份**：内置退避自动重连（5s / 15s / 60s）、运行状态监控、实时脱敏日志检索、诊断包导出以及加密分享备份导入/导出。
+
+## 界面预览
+
+> 下图为早期 1.7.0 模拟器界面参考；`v1.8.0` 已进一步升级为鲸海蓝主题、悬浮式 Liquid Glass 滑动玻璃底栏与胶囊输入栏。
+
+| 运行首页 | 本机对话 | 工具中心 | 快速排障 |
+| :---: | :---: | :---: | :---: |
+| <a href="docs/images/whaletalk-1.7.0/home.png"><img src="docs/images/whaletalk-1.7.0/home.png" alt="鲸语运行首页" width="190" /></a> | <a href="docs/images/whaletalk-1.7.0/chat.png"><img src="docs/images/whaletalk-1.7.0/chat.png" alt="鲸语聊天页" width="190" /></a> | <a href="docs/images/whaletalk-1.7.0/tools.png"><img src="docs/images/whaletalk-1.7.0/tools.png" alt="鲸语工具页" width="190" /></a> | <a href="docs/images/whaletalk-1.7.0/diagnostics.png"><img src="docs/images/whaletalk-1.7.0/diagnostics.png" alt="鲸语快速排障" width="190" /></a> |
+
+## 快速上手
+
+1. **下载安装包**：前往 [GitHub Releases 最新版](https://github.com/mzbgq29-ui/WhaleTalk-Android/releases/latest) 下载 `WhaleTalk-Android-1.8.0-arm64-v8a.apk`（或解压 `.zip` 后安装其中的 APK）。
+2. **准备运行环境**：打开应用进入「开始设置」，首次解压约 143 MB SnowLuma 运行层与内置组件时请保持应用在前台。
+3. **配置模型与主人 QQ**：在「云端模型」页填写你的主人 QQ 号、API 地址、模型名称与 API Key。
+4. **登录机器人小号**：在「QQ 登录」页打开内置登录画面扫码或验证登录，回到首页启动服务即可开始对话。
 
 ## 系统要求
 
-Android 8.0 或更新版本、ARM64 手机，无需 root。完整 APK 约 1 GB，准备运行环境需要额外空间，建议预留至少 6 GB。首次准备会解压约 143 MB 的 SnowLuma 运行层，界面会显示真实进度，通常需要几分钟；请保持应用运行，不要因进度条停在一半就强制关闭。网络、QQ 平台或模型服务变化可能影响连接。
+> [!NOTE]
+> - **设备要求**：Android 8.0 及以上、ARM64 (`arm64-v8a`) 手机，**无需 Root**。
+> - **存储空间**：完整 APK 约 1 GB，解压并运行环境建议预留 **至少 6 GB** 可用空间。
+> - **包名与升级**：鲸语使用独立包名 `dev.whaletalk.android`，1.4.0～1.7.2 同签名版本可直接覆盖升级至 1.8.0；若从 1.3.9 或更早旧版迁移，请先在旧版导出备份后再导入新版。
+
+## 运行组件
+
+| 组件 | 作用说明 | 版本 / 备注 |
+| :--- | :--- | :--- |
+| **Android 壳体** | 原生 Compose 操作台、服务守护、备份与诊断 | WhaleTalk 1.8.0（MIT） |
+| **思考引擎** | 对话管理、人设、知识库、插件与模型调度 | AstrBot（本机运行） |
+| **QQ 连接层** | 协议接入、OneBot 消息通道与版本锁定守护 | SnowLuma 2.4.2 · Linux QQ 3.2.35-54395 |
+| **容器运行层** | 免 Root 本机隔离用户态运行环境 | PRoot + Ubuntu ARM64 |
+| **内置增强** | 长期记忆、拟人分段、群聊空气读取（按需开启） | Memory Companion / Chat Plus |
+
+## 文档导航
+
+| 文档 | 内容说明 |
+| :--- | :--- |
+| [安装与上手教程](docs/INSTALL.md) | 安装、环境准备、QQ 登录、模型配置、人设与后台保活设置 |
+| [常见问题与排障](docs/TROUBLESHOOTING.md) | QQ 在线但不回复、模型连接异常、环境准备失败排查 |
+| [更新日志](docs/CHANGELOG.md) | 各版本功能迭代与变更记录 |
+| [源码构建与签名](docs/BUILD.md) | 开发环境配置、内置运行时打包、构建命令与签名验证 |
+| [消息通道说明](docs/消息通道.md) | 本机 OneBot IPC 通道发现与重连机制说明 |
+| [历史验证范围](VALIDATION.md) | 测试覆盖范围与真机/模拟器验证记录 |
+| [第三方依赖与许可](THIRD_PARTY.md) | 随包分发组件的开源许可与完整声明 |
 
 ## 参与与反馈
 
-阅读 [贡献指南](.github/CONTRIBUTING.md) 后提交 Issue 或 Pull Request。反馈前可查看 [排障指南](docs/TROUBLESHOOTING.md)；请先移除账号、会话、API Key、密码与完整日志中的隐私信息。安全问题按 [SECURITY.md](SECURITY.md) 提交。
+欢迎在阅读 [贡献指南](.github/CONTRIBUTING.md) 后提交 Issue 或 Pull Request。
 
-应用源码遵循仓库内的 [MIT 许可](LICENSE)，第三方软件、素材及角色卡各自的来源和许可见 [THIRD_PARTY.md](THIRD_PARTY.md) 与 `docs/legal/`。QQ 和 SnowLuma 专有二进制依赖不是本仓库拥有的源码；请遵守各自的使用条款。
+- 提交反馈前建议先查看 [排障指南](docs/TROUBLESHOOTING.md)，或使用应用内「导出诊断包」（已内置脱敏），切勿直接贴出真实账号、聊天记录、API Key 或密码。
+- 如发现安全漏洞，请遵循 [SECURITY.md](SECURITY.md) 指引私密报告。
+
+## 开源许可
+
+本仓库自研 Android 应用源码采用 [MIT 许可](LICENSE) 开源。第三方开源组件、字体、素材及角色卡各自的来源与许可协议见 [THIRD_PARTY.md](THIRD_PARTY.md) 与 [`docs/legal/`](docs/legal/) 目录；QQ 及 SnowLuma 等专有二进制依赖归各自版权方所有，请遵守其对应使用条款。
