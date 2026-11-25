@@ -29,14 +29,6 @@
 - **精细控制与规则试算**：可配置主人 QQ、好友与群允许名单、唤醒词、@ 回复及引用样式，并支持在页面内直接试算消息是否会被回复。
 - **掉线守护与完整备份**：内置退避自动重连（5s / 15s / 60s）、运行状态监控、实时脱敏日志检索、诊断包导出以及加密分享备份导入/导出。
 
-## 界面预览
-
-> 下图为早期 1.7.0 模拟器界面参考；`v1.8.0` 已进一步升级为鲸海蓝主题、悬浮式 Liquid Glass 滑动玻璃底栏与胶囊输入栏。
-
-| 运行首页 | 本机对话 | 工具中心 | 快速排障 |
-| :---: | :---: | :---: | :---: |
-| <a href="docs/images/whaletalk-1.7.0/home.png"><img src="docs/images/whaletalk-1.7.0/home.png" alt="鲸语运行首页" width="190" /></a> | <a href="docs/images/whaletalk-1.7.0/chat.png"><img src="docs/images/whaletalk-1.7.0/chat.png" alt="鲸语聊天页" width="190" /></a> | <a href="docs/images/whaletalk-1.7.0/tools.png"><img src="docs/images/whaletalk-1.7.0/tools.png" alt="鲸语工具页" width="190" /></a> | <a href="docs/images/whaletalk-1.7.0/diagnostics.png"><img src="docs/images/whaletalk-1.7.0/diagnostics.png" alt="鲸语快速排障" width="190" /></a> |
-
 ## 快速上手
 
 1. **下载安装包**：前往 [GitHub Releases 最新版](https://github.com/mzbgq29-ui/WhaleTalk-Android/releases/latest) 下载 `WhaleTalk-Android-1.8.0-arm64-v8a.apk`（或解压 `.zip` 后安装其中的 APK）。
