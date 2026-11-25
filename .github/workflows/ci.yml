@@ -1,0 +1,28 @@
+name: Source checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Check build script syntax
+        run: python -B -c "import ast; from pathlib import Path; roots=[Path('tools'), Path('app/src/main/assets')]; [ast.parse(p.read_text(encoding='utf8'), filename=str(p)) for root in roots if root.exists() for p in root.rglob('*.py')]"
+      - name: Check guest_compat.c syntax
+        run: gcc -fsyntax-only -std=gnu11 -Wall app/src/main/assets/runtime/desktop/guest_compat.c
+      - name: Compile application sources
+        run: bash gradlew :core:compileKotlin :app:compileBootstrapReleaseKotlin
+      - name: Run unit tests and compile Android instrumentation tests
+        run: bash gradlew :core:test :app:testBootstrapDebugUnitTest :app:compileBootstrapDebugAndroidTestKotlin --no-daemon

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "status": "source artifacts pinned; compatibility validation in progress",
+  "astrbot": {
+    "version": "4.29.3",
+    "source": {
+      "url": "https://codeload.github.com/AstrBotDevs/AstrBot/tar.gz/refs/tags/v4.29.3",
+      "sha256": "b84dc012f1121072def6d47f47ac11678b73e957ade1e4e16c5a3dfe9d521fe0"
+    },
+    "dashboard": {
+      "url": "https://github.com/AstrBotDevs/AstrBot/releases/download/v4.29.3/AstrBot-v4.29.3-dashboard.zip",
+      "sha256": "a09f560c4140b930180f63a4929c885da80e24fb9bbda56619727bd25e985a11"
+    }
+  },
+  "qq": {
+    "version": "3.2.35-54395",
+    "arm64-v8a": {
+      "url": "https://qqdl.gtimg.cn/qqfile/QQNT/9.9.37/beta/816b3c79/linuxqq_3.2.35-54395_arm64.deb",
+      "sha256": "5f93ea62347dd772c7be4115413c95d2a60d189f3dd81bc194834bd4d7343cf2"
+    },
+    "installation": "separate verified managed package, outside base image"
+  },
+  "snowluma": {
+    "version": "2.4.2",
+    "runtimeSHA256": "c91adaa061b910b2fdfc43a6957272dba15f7f228b2fc8e4a35e85a33ee380c8"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "sha256": "4d476afbfdec1eb901859cc3c54279cecf755eda01f5926bf71bada4b0fafd9d",
+  "bytes": 4254581,
+  "unpackedBytes": 16957044,
+  "plugins": [
+    {
+      "repo": "menglimi/astrbot_plugin_memory_companion",
+      "commit": "0e22a01e680d5a43b2ca98dea8a550a16c7611fa",
+      "stars": 113,
+      "pushedAt": "2026-11-09T18:51:22Z",
+      "license": "MIT",
+      "archiveSHA256": "2540bd045e65ca626077977c70b25ec1434ddc86e6416826e624d8470e6eef4a",
+      "archiveBytes": 2796961,
+      "id": "astrbot_plugin_memory_companion",
+      "version": "2.6.6"
+    },
+    {
+      "repo": "Him666233/astrbot_plugin_group_chat_plus",
+      "commit": "aa97e0e35a18733e73db753238dd2a3021446e42",
+      "stars": 206,
+      "pushedAt": "2026-09-23T16:54:48Z",
+      "license": "AGPL-3.0",
+      "archiveSHA256": "6e947eede6708b39c7ef2c0fb4c0947274390f37ae4a10fba132fd35c180119b",
+      "archiveBytes": 1060302,
+      "id": "astrbot_plugin_group_chat_plus",
+      "version": "V1.2.3.hotfix.2"
+    }
+  ],
+  "dependencies": [
+    {
+      "file": "argon2_cffi-25.1.0-py3-none-any.whl",
+      "sha256": "fdc8b074db390fccb6eb4a3604ae7231f219aa669a2652e0f20e16ba513d5741"
+    },
+    {
+      "file": "argon2_cffi_bindings-25.1.0-cp39-abi3-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl",
+      "sha256": "1e021e87faa76ae0d413b619fe2b65ab9a037f24c60a1e6cc43457ae20de6dc6"
+    }
+  ],
+  "profile": "No extra API credentials. Memory embedding and reranking disabled; current chat model used only for optional summaries. Group Chat Plus developer requirements omitted; original source requirements retained. Voice, image services and autonomous idle sending disabled."
+}

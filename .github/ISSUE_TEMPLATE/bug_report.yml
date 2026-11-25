@@ -1,0 +1,30 @@
+name: 问题反馈
+description: 报告安装、连接或使用问题
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: 请勿提交密码、API Key、QQ 号、二维码、会话、备份或未脱敏日志。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 遇到了什么问题？
+      description: 说明期望结果、实际结果，以及私聊还是群聊。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 如何重现？
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 应用版本、Android 版本及手机架构
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 脱敏后的状态或错误信息

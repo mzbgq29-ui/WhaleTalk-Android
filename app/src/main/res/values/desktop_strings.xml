@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="desktop_name">Ubuntu 桌面</string>
+    <string name="desktop_arm64">桌面扩展目前仅支持 ARM64 运行环境。</string>
+    <string name="desktop_space">准备内置桌面与通用工具需要至少 1 GiB 可用存储，请先清理空间。</string>
+    <string name="desktop_install_failed">内置桌面准备未完成。可在日志中查看原因，检查可用空间后重试。</string>
+    <string name="desktop_access_failed">无法准备桌面访问凭据，请检查存储后重试。</string>
+    <string name="desktop_install_first">请先完成环境初始化；已有环境可在 Linux QQ 设置中修复内置桌面。</string>
+    <string name="desktop_qq_space">原版 QQ 下载和解压需要至少 1 GiB 可用存储。</string>
+    <string name="desktop_qq_downloading">正在从腾讯官方下载原版 Linux ARM64 QQ…</string>
+    <string name="desktop_download_failed">下载失败，请检查网络后重试。</string>
+    <string name="desktop_integrity_failed">QQ 安装包大小或 SHA-256 校验未通过，已取消安装。</string>
+    <string name="desktop_qq_unpacking">正在解压原版 QQ 并检查依赖…</string>
+    <string name="desktop_qq_failed">原版 QQ 安装未完成，请查看桌面日志后重试。</string>
+    <string name="desktop_unavailable">桌面暂未就绪，请稍后刷新或查看桌面日志。</string>
+    <string name="desktop_exited">桌面进程已退出，请查看日志后重新启动。</string>
+    <string name="desktop_exited_code">桌面进程已退出（%1$d），残留进程已清理，可重新启动。若反复退出，请检查系统后台限制及桌面日志。</string>
+    <string name="desktop_process_recovery_failed">桌面或 QQ 的残留进程未能清理，请查看桌面日志后重试。</string>
+    <string name="desktop_qq_install_first">请先安装独立的原版 Linux QQ。</string>
+    <string name="desktop_qq_exited">原版 QQ 已退出，可查看日志或重新启动。</string>
+    <string name="desktop_operation_failed">桌面操作未完成，请检查日志、网络与可用存储后重试。</string>
+    <string name="desktop_resume_failed">桌面依赖安装结束后，%1$s 未能恢复启动，请手动启动并查看日志。</string>
+    <string name="desktop_stop">停止桌面</string>
+    <string name="desktop_start">启动桌面</string>
+    <string name="desktop_open">打开桌面</string>
+    <string name="desktop_qq_name">独立原版 Linux QQ</string>
+    <string name="desktop_qq_update">更新原版 QQ</string>
+    <string name="desktop_qq_stop_first">请先停止独立原版 QQ，再启动 SnowLuma。</string>
+    <string name="desktop_qq_isolation">独立 QQ 与 SnowLuma 分别保存数据。启动独立 QQ 会停止 SnowLuma；启动 SnowLuma 会停止独立 QQ。桌面本身可以与机器人服务同时运行。</string>
+    <string name="desktop_password">桌面访问密码</string>
+    <string name="desktop_reveal">显示密码</string>
+    <string name="desktop_hide">隐藏密码</string>
+    <string name="desktop_copy_password">复制密码</string>
+    <string name="desktop_copy_environment">复制终端图形环境配置</string>
+    <string name="desktop_qq_install_notice">从腾讯官方下载约 198 MiB 安装包，校验后解压；安装后约占用 640 MiB。不会修改 SnowLuma 的 QQ 文件。继续安装？</string>
+    <string name="desktop_qq_update_notice">从腾讯官方下载约 198 MiB 安装包，校验并检查依赖后替换旧版 QQ 程序。更新前停止独立 QQ，保留登录数据；安装失败时恢复旧程序。继续更新？</string>
+    <string name="desktop_qq_start_notice">将停止 SnowLuma 并启动独立原版 QQ，两边的登录数据都会保留。切回 SnowLuma 时可在首页重新启动。继续？</string>
+</resources>

@@ -1,0 +1,322 @@
+name: Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      checkout_ref:
+        description: 'Git commit, branch, or tag to build (default: this workflow ref)'
+        required: false
+        default: ''
+      previous_tag:
+        description: 'Previous complete release used to recover runtime assets (default: latest, or v1.3.9)'
+        required: false
+        default: ''
+      release_tag:
+        description: 'GitHub Release / tag name to publish (default: the pushed tag, or v1.4.0 when building 56b4711)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-apk
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      PREVIOUS_FALLBACK_TAG: v1.3.9
+    steps:
+      - name: Free runner disk space
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk /usr/share/swift \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/powershell /usr/local/share/chromium || true
+          sudo docker system prune -af || true
+          df -h
+
+      - name: Resolve build refs
+        id: refs
+        env:
+          INPUT_CHECKOUT: ${{ inputs.checkout_ref }}
+          INPUT_PREVIOUS: ${{ inputs.previous_tag }}
+          INPUT_RELEASE: ${{ inputs.release_tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ -n "${INPUT_CHECKOUT}" ]; then
+            CHECKOUT="${INPUT_CHECKOUT}"
+          else
+            CHECKOUT="${GITHUB_REF}"
+          fi
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ -n "${INPUT_RELEASE}" ]; then
+            RELEASE_TAG="${INPUT_RELEASE}"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            RELEASE_TAG="${GITHUB_REF_NAME}"
+          else
+            RELEASE_TAG=""
+          fi
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ -n "${INPUT_PREVIOUS}" ]; then
+            PREVIOUS="${INPUT_PREVIOUS}"
+          else
+            PREVIOUS="$(gh release list --limit 20 --json tagName,isDraft,isPrerelease --jq \
+              '[.[] | select((.isDraft|not) and (.isPrerelease|not))][0].tagName' || true)"
+            if [ -z "${PREVIOUS}" ] || [ "${PREVIOUS}" = "${RELEASE_TAG}" ]; then
+              PREVIOUS="${PREVIOUS_FALLBACK_TAG}"
+            fi
+          fi
+          echo "checkout=${CHECKOUT}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "previous_tag=${PREVIOUS}" >> "$GITHUB_OUTPUT"
+          echo "Building checkout=${CHECKOUT} release_tag=${RELEASE_TAG} previous_tag=${PREVIOUS}"
+
+      - name: Checkout application sources
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.refs.outputs.checkout }}
+          lfs: true
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android Platform 35 and Build-Tools
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          if [ ! -d "$SDK" ]; then
+            echo "Android SDK not found at $SDK"
+            exit 1
+          fi
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          SM="$(find "$SDK/cmdline-tools" -name sdkmanager -type f | sort | tail -1)"
+          test -n "$SM" && test -x "$SM"
+          yes | "$SM" --licenses >/dev/null || true
+          "$SM" --install "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+          test -x "$SDK/build-tools/35.0.0/apksigner"
+          test -x "$SDK/build-tools/35.0.0/aapt"
+          echo "Using Android SDK at $SDK"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Download previous complete APK for runtime assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PREVIOUS_TAG: ${{ steps.refs.outputs.previous_tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/previous"
+          gh release download "$PREVIOUS_TAG" -D "$RUNNER_TEMP/previous" \
+            -p 'WhaleTalk-*-SHA256.txt' -p 'WhaleTalk-Android-*-arm64-v8a.zip'
+          ls -lh "$RUNNER_TEMP/previous"
+          SUMS="$(ls "$RUNNER_TEMP/previous"/WhaleTalk-*-SHA256.txt | head -1)"
+          ZIP="$(ls "$RUNNER_TEMP/previous"/WhaleTalk-Android-*-arm64-v8a.zip | head -1)"
+          python3 - "$RUNNER_TEMP/previous" "$RUNNER_TEMP/previous-apk.txt" <<'PY'
+          import hashlib, pathlib, sys, zipfile
+          folder = pathlib.Path(sys.argv[1])
+          expected = {}
+          sums = next(folder.glob("WhaleTalk-*-SHA256.txt"))
+          for line in sums.read_text().splitlines():
+              parts = line.split()
+              if len(parts) >= 2:
+                  expected[parts[-1].lstrip("*")] = parts[0].lower()
+          archive = next(folder.glob("WhaleTalk-Android-*-arm64-v8a.zip"))
+          digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+          want = expected[archive.name]
+          assert digest == want, f"ZIP hash mismatch: {digest} != {want}"
+          print("verified zip", archive.name, digest)
+          apk_name = next(name for name in expected if name.endswith(".apk"))
+          with zipfile.ZipFile(archive) as z:
+              z.extract(apk_name, folder)
+          apk = folder / apk_name
+          digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+          assert digest == expected[apk_name], f"APK hash mismatch: {digest} != {expected[apk_name]}"
+          print("extracted and verified", apk, apk.stat().st_size, digest)
+          pathlib.Path(sys.argv[2]).write_text(str(apk) + "\n" + digest + "\n")
+          PY
+          rm -f "$ZIP"
+          df -h
+
+      - name: Recover bundled runtime inputs
+        run: |
+          set -euo pipefail
+          APK="$(head -1 "$RUNNER_TEMP/previous-apk.txt")"
+          SHA="$(sed -n '2p' "$RUNNER_TEMP/previous-apk.txt")"
+          python3 tools/bigfish/prepare_release_inputs.py --apk "$APK" --sha256 "$SHA" --output "$PWD/.local/inputs"
+          rm -f "$APK"
+          du -sh .local/inputs .local/inputs/assets .local/inputs/native || true
+          df -h
+
+      - name: Write local.properties and signing config
+        env:
+          WHALETALK_RELEASE_KEYSTORE: ${{ secrets.WHALETALK_RELEASE_KEYSTORE }}
+          WHALETALK_RELEASE_STORE_PASSWORD: ${{ secrets.WHALETALK_RELEASE_STORE_PASSWORD }}
+          WHALETALK_RELEASE_KEY_PASSWORD: ${{ secrets.WHALETALK_RELEASE_KEY_PASSWORD }}
+          WHALETALK_RELEASE_KEY_ALIAS: ${{ secrets.WHALETALK_RELEASE_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, base64
+          from pathlib import Path
+          sdk = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT")
+          assert sdk and Path(sdk).is_dir(), "Android SDK not found"
+          Path("local.properties").write_text(
+              f"sdk.dir={sdk}\n"
+              f"runtimeAssetsDir={Path('.local/inputs/assets').resolve()}\n"
+              f"distributionAssetsDir={Path('.local/inputs/assets').resolve()}\n"
+              f"optionalAssetsDir={Path('.local/inputs/assets').resolve()}\n"
+              f"nativeLibsDir={Path('.local/inputs/native').resolve()}\n",
+              encoding="utf8",
+          )
+          signing = Path(".local/signing")
+          signing.mkdir(parents=True, exist_ok=True)
+          (signing / "release.p12").write_bytes(base64.b64decode(os.environ["WHALETALK_RELEASE_KEYSTORE"]))
+          alias = os.environ["WHALETALK_RELEASE_KEY_ALIAS"]
+          store = os.environ["WHALETALK_RELEASE_STORE_PASSWORD"]
+          key = os.environ["WHALETALK_RELEASE_KEY_PASSWORD"]
+          (signing / "release.properties").write_text(
+              "storeFile=release.p12\n"
+              f"keyAlias={alias}\n"
+              f"storePassword={store}\n"
+              f"keyPassword={key}\n",
+              encoding="utf8",
+          )
+          for path in (signing / "release.p12", signing / "release.properties", Path("local.properties")):
+              path.chmod(0o600)
+          print("signing and SDK paths written")
+          PY
+
+      - name: Refresh third-party notice artifact index
+        run: |
+          set -euo pipefail
+          bash gradlew :app:collectReleaseDependencyMetadata --no-daemon --console=plain \
+            -PbundledRuntime=true \
+            -PreleaseSigningProperties="$PWD/.local/signing/release.properties"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          tsv = Path("app/build/distribution/android-dependencies/artifacts.tsv")
+          current = []
+          for line in tsv.read_text().splitlines():
+              group, name, version, ext, sha, *rest = line.split("\t")
+              current.append(f"{group}:{name}:{version}:{ext}:{sha}")
+          current_set = set(current)
+          manifest_path = Path(".local/inputs/assets/third-party/manifest.json")
+          index = json.loads(manifest_path.read_text())
+          previous = set(index.get("androidArtifacts") or [])
+          added = sorted(current_set - previous)
+          removed = sorted(previous - current_set)
+          print("androidArtifacts added", len(added), "removed", len(removed))
+          for item in added[:30]:
+              print(" +", item)
+          for item in removed[:30]:
+              print(" -", item)
+          index["androidArtifacts"] = sorted(current_set)
+          manifest_path.write_text(json.dumps(index, indent=2) + "\n", encoding="utf8")
+          print("updated", manifest_path)
+          PY
+
+      - name: Build signed bundled release APK
+        run: |
+          set -euo pipefail
+          bash gradlew :app:assembleBundledRelease --no-daemon --console=plain \
+            -PbundledRuntime=true \
+            -PreleaseSigningProperties="$PWD/.local/signing/release.properties"
+          ls -lh app/build/outputs/apk/bundled/release/
+
+      - name: Verify signature and package release files
+        env:
+          WHALETALK_RELEASE_CERT_SHA256: ${{ secrets.WHALETALK_RELEASE_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          python3 tools/bigfish/verify_release.py --sdk "$SDK" \
+            --expected-certificate-sha256 "$WHALETALK_RELEASE_CERT_SHA256"
+          python3 tools/bigfish/deliver.py
+          ls -lh dist/
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.refs.outputs.release_tag }}
+          CHECKOUT_REF: ${{ steps.refs.outputs.checkout }}
+          CERT: ${{ secrets.WHALETALK_RELEASE_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RELEASE_TAG}" ]; then
+            echo "No release tag resolved; skip publish"
+            exit 1
+          fi
+          python3 - <<'PY'
+          import os, pathlib, re
+          changelog = pathlib.Path("docs/CHANGELOG.md").read_text(encoding="utf8")
+          match = re.search(r"(## v1\.\d+\.\d+（鲸语 WhaleTalk）.*?)(?=\n## |\Z)", changelog, re.S)
+          body = match.group(1).strip() if match else changelog.split("\n## ", 1)[0].strip()
+          tag = os.environ["RELEASE_TAG"]
+          cert = os.environ["CERT"]
+          notes = f"""# 鲸语 {tag.lstrip('v')}
+
+          {body}
+
+          ## 下载
+
+          - **WhaleTalk-Android-{tag.lstrip('v')}-arm64-v8a.zip**：完整安装包，解压后安装其中的 APK；适用于 Android 8.0 及以上的 ARM64 手机。
+          - **WhaleTalk-Android-{tag.lstrip('v')}-arm64-v8a.apk**：同一安装包的 APK，可直接下载安装。
+          - **WhaleTalk-Android-{tag.lstrip('v')}-source.zip**：对应版本的源码。
+          - **WhaleTalk-{tag.lstrip('v')}-SHA256.txt**：安装包及源码摘要。
+
+          ## 签名说明
+
+          本版本使用仓库维护用的长期签名密钥，证书 SHA-256 为 `{cert}`。
+          该证书与鲸语 1.3.9 的签名不同。若手机上已经安装 1.3.9，不能直接覆盖升级；请先在旧版导出备份，卸载后再安装本版本，然后导入备份。
+          """
+          # dedent
+          notes = "\n".join(line[10:] if line.startswith("          ") else line for line in notes.splitlines())
+          pathlib.Path(os.environ["RUNNER_TEMP"], "release-notes.md").write_text(notes.strip() + "\n", encoding="utf8")
+          print("notes written")
+          PY
+          # Prefer the official checksum filename used by 1.3.9
+          VERSION="${RELEASE_TAG#v}"
+          if [ -f "dist/SHA256SUMS.txt" ]; then
+            cp dist/SHA256SUMS.txt "dist/WhaleTalk-${VERSION}-SHA256.txt"
+          fi
+          TARGET="$(git rev-parse HEAD)"
+          FILES=(
+            "dist/WhaleTalk-Android-${VERSION}-arm64-v8a.zip"
+            "dist/WhaleTalk-Android-${VERSION}-arm64-v8a.apk"
+            "dist/WhaleTalk-Android-${VERSION}-source.zip"
+            "dist/WhaleTalk-${VERSION}-SHA256.txt"
+          )
+          for f in "${FILES[@]}"; do
+            test -f "$f"
+            ls -lh "$f"
+          done
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${FILES[@]}" --clobber
+            gh release edit "$RELEASE_TAG" --title "鲸语 ${VERSION}" --notes-file "$RUNNER_TEMP/release-notes.md"
+          else
+            gh release create "$RELEASE_TAG" "${FILES[@]}" \
+              --title "鲸语 ${VERSION}" \
+              --notes-file "$RUNNER_TEMP/release-notes.md" \
+              --target "$TARGET"
+          fi
+          gh release view "$RELEASE_TAG"

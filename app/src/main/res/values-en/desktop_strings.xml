@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="desktop_name">Ubuntu desktop</string>
+    <string name="desktop_arm64">The desktop extension currently requires ARM64.</string>
+    <string name="desktop_space">Preparing the built-in desktop and tools requires at least 1 GiB of free storage.</string>
+    <string name="desktop_install_failed">Built-in desktop preparation did not complete. Check logs and free storage, then retry.</string>
+    <string name="desktop_access_failed">Unable to prepare desktop credentials. Check free storage and retry.</string>
+    <string name="desktop_install_first">Initialize the environment first, or repair the built-in desktop in Linux QQ settings.</string>
+    <string name="desktop_qq_space">Downloading and extracting QQ requires at least 1 GiB of free storage.</string>
+    <string name="desktop_qq_downloading">Downloading original Linux ARM64 QQ from Tencent…</string>
+    <string name="desktop_download_failed">Download failed. Check your connection and retry.</string>
+    <string name="desktop_integrity_failed">QQ package size or SHA-256 verification failed. Installation cancelled.</string>
+    <string name="desktop_qq_unpacking">Extracting original QQ and checking dependencies…</string>
+    <string name="desktop_qq_failed">QQ installation did not complete. Check desktop logs and retry.</string>
+    <string name="desktop_unavailable">Desktop is not ready. Refresh later or check desktop logs.</string>
+    <string name="desktop_exited">Desktop exited. Check logs before restarting.</string>
+    <string name="desktop_exited_code">The desktop exited (%1$d). Remaining owned processes were cleaned up; you can start it again. For repeated exits, check Android background limits and desktop logs.</string>
+    <string name="desktop_process_recovery_failed">Remaining desktop or QQ processes could not be cleaned up. Check the desktop logs and retry.</string>
+    <string name="desktop_qq_install_first">Install the independent original Linux QQ first.</string>
+    <string name="desktop_qq_exited">Original QQ exited. Check logs or start it again.</string>
+    <string name="desktop_operation_failed">Desktop operation failed. Check logs, connection and free storage.</string>
+    <string name="desktop_resume_failed">%1$s could not restart after desktop installation. Start it manually and check logs.</string>
+    <string name="desktop_stop">Stop desktop</string>
+    <string name="desktop_start">Start desktop</string>
+    <string name="desktop_open">Open desktop</string>
+    <string name="desktop_qq_name">Independent original Linux QQ</string>
+    <string name="desktop_qq_update">Update original QQ</string>
+    <string name="desktop_qq_stop_first">Stop independent original QQ before starting SnowLuma.</string>
+    <string name="desktop_qq_isolation">Original QQ and SnowLuma keep separate data. Starting original QQ stops SnowLuma; starting SnowLuma stops original QQ. The desktop itself can coexist with bot services.</string>
+    <string name="desktop_password">Desktop password</string>
+    <string name="desktop_reveal">Show password</string>
+    <string name="desktop_hide">Hide password</string>
+    <string name="desktop_copy_password">Copy password</string>
+    <string name="desktop_copy_environment">Copy graphical terminal environment</string>
+    <string name="desktop_qq_install_notice">Download about 198 MiB from Tencent, verify and extract it. Installed size is about 640 MiB. SnowLuma files are preserved. Continue?</string>
+    <string name="desktop_qq_update_notice">Download about 198 MiB from Tencent, verify it and check dependencies before replacing QQ. Independent QQ stops before the update; login data is preserved. Installation failure restores the previous program. Update?</string>
+    <string name="desktop_qq_start_notice">Stop SnowLuma and start independent original QQ? Both data directories are preserved. Restart SnowLuma from Home to switch back.</string>
+</resources>

@@ -1,0 +1,24 @@
+{
+  "phase": "desktop-snapshot",
+  "scope": "Host reproduction of the application archive algorithm, without executing ARM64 programs",
+  "entry": "var/lib/ieee-data/oui36.txt",
+  "entries": 13819,
+  "kind": "symlink",
+  "target": "/usr/share/ieee-data/oui36.txt",
+  "bootstrap": {
+    "filesBytes": 1351888811,
+    "entries": 82553,
+    "links": 7475
+  },
+  "desktop-snapshot": {
+    "filesBytes": 537468158,
+    "entries": 13819,
+    "links": 534
+  },
+  "result": "passed",
+  "arm64PythonImports": "quart, fastapi, faiss: exit 0 under QEMU/PRoot",
+  "desktopActivation": "exit 0, including native ctypes library load",
+  "precompiledActivation": "exit 0; fingerprint matches Android calculation",
+  "bug": "Old completeness predicate requires removed opt/qq/.astrbot-components.json",
+  "oldPredicateWouldPass": false
+}
