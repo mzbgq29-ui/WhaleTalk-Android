@@ -91,8 +91,10 @@ class BigFishModelVerifierTest {
             val client = OkHttpClient.Builder().addInterceptor(okhttp3.Interceptor { throw error }).build()
             val failure = runCatching { BigFishModelVerifier(client).verify(input) }.exceptionOrNull()
             assertEquals(expected, failure?.message)
-            assertFalse(failure.toString().contains(input.key))
-            assertNull(failure?.cause)
+            generateSequence(failure) { it.cause }.forEach { throwable ->
+                assertFalse(throwable.toString().contains(input.key))
+                assertFalse(throwable is IOException)
+            }
         }
     }
     @Test fun responseIsBounded() = runBlocking {
