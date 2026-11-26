@@ -19,7 +19,7 @@
 ---
 
 > [!TIP]
-> **鲸语 `v1.8.0` 现已发布**：全面重构 Jetpack Compose 原生界面——全新瓷白 / 深海夜蓝与鲸海蓝配色体系、支持点按与横向滑动切页的悬浮式 **Liquid Glass 液态玻璃底栏**、一体式胶囊聊天输入栏以及带矢量图标徽章的分组卡片。
+> **鲸语 `v1.8.2` 现已发布**：进一步打磨原生 Liquid Glass 液态玻璃交互、本机对话与实时状态刷新，并全面加固运行层版本校验、自动重连、更新检测与日志脱敏可靠性。
 
 ## 核心特性
 
@@ -31,7 +31,7 @@
 
 ## 快速上手
 
-1. **下载安装包**：前往 [GitHub Releases 最新版](https://github.com/mzbgq29-ui/WhaleTalk-Android/releases/latest) 下载 `WhaleTalk-Android-1.8.0-arm64-v8a.apk`（或解压 `.zip` 后安装其中的 APK）。
+1. **下载安装包**：前往 [GitHub Releases 最新版](https://github.com/mzbgq29-ui/WhaleTalk-Android/releases/latest) 下载 `WhaleTalk-Android-1.8.2-arm64-v8a.apk`（或解压 `.zip` 后安装其中的 APK）。
 2. **准备运行环境**：打开应用进入「开始设置」，首次解压约 143 MB SnowLuma 运行层与内置组件时请保持应用在前台。
 3. **配置模型与主人 QQ**：在「云端模型」页填写你的主人 QQ 号、API 地址、模型名称与 API Key。
 4. **登录机器人小号**：在「QQ 登录」页打开内置登录画面扫码或验证登录，回到首页启动服务即可开始对话。
@@ -41,13 +41,13 @@
 > [!NOTE]
 > - **设备要求**：Android 8.0 及以上、ARM64 (`arm64-v8a`) 手机，**无需 Root**。
 > - **存储空间**：完整 APK 约 1 GB，解压并运行环境建议预留 **至少 6 GB** 可用空间。
-> - **包名与升级**：鲸语使用独立包名 `dev.whaletalk.android`，1.4.0～1.7.2 同签名版本可直接覆盖升级至 1.8.0；若从 1.3.9 或更早旧版迁移，请先在旧版导出备份后再导入新版。
+> - **包名与升级**：鲸语使用独立包名 `dev.whaletalk.android`，1.4.0～1.8.0 同签名版本可直接覆盖升级至 1.8.2；若从 1.3.9 或更早旧版迁移，请先在旧版导出备份后再导入新版。
 
 ## 运行组件
 
 | 组件 | 作用说明 | 版本 / 备注 |
 | :--- | :--- | :--- |
-| **Android 壳体** | 原生 Compose 操作台、服务守护、备份与诊断 | WhaleTalk 1.8.0（MIT） |
+| **Android 壳体** | 原生 Compose 操作台、服务守护、备份与诊断 | WhaleTalk 1.8.2（MIT） |
 | **思考引擎** | 对话管理、人设、知识库、插件与模型调度 | AstrBot（本机运行） |
 | **QQ 连接层** | 协议接入、OneBot 消息通道与版本锁定守护 | SnowLuma 2.4.2 · Linux QQ 3.2.35-54395 |
 | **容器运行层** | 免 Root 本机隔离用户态运行环境 | PRoot + Ubuntu ARM64 |
