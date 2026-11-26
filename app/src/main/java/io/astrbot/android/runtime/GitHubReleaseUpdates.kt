@@ -4,6 +4,7 @@ package io.astrbot.android.runtime
 
 import android.content.Context
 import io.astrbot.android.BuildConfig
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -40,6 +41,8 @@ object AppUpdateStore {
     fun publish(value: AppUpdateCheck?) { state.value = value }
 }
 
+private class GitHubRateLimitException : IllegalStateException("GitHub 接口暂时限流，请稍后再试")
+
 /** Compare and parse GitHub Releases / tags for this WhaleTalk repository. */
 internal object GitHubReleaseUpdates {
     const val OWNER = "mzbgq29-ui"
@@ -49,26 +52,41 @@ internal object GitHubReleaseUpdates {
     const val RELEASES_PAGE = "https://github.com/$OWNER/$REPO/releases"
     private val versionCodeHint = Regex("""(?:versionCode|版本代码)\s*[:=]?\s*[`\"]?(\d{5,9})[`\"]?""")
 
+    private val prereleaseToken = Regex("[0-9]+|[^0-9._-]+")
+
     fun versionNameFromTag(tag: String): String = tag.trim().trimStart('v', 'V')
 
     fun compareVersionNames(left: String, right: String): Int {
-        val a = tokenize(versionNameFromTag(left))
-        val b = tokenize(versionNameFromTag(right))
-        val n = maxOf(a.size, b.size)
-        for (i in 0 until n) {
-            val x = a.getOrNull(i)
-            val y = b.getOrNull(i)
-            if (x == null) return if (y == null) 0 else -1
-            if (y == null) return 1
+        val a = versionNameFromTag(left).substringBefore('+')
+        val b = versionNameFromTag(right).substringBefore('+')
+        val coreOrder = compareTokens(coreTokens(a.substringBefore('-')), coreTokens(b.substringBefore('-')))
+        if (coreOrder != 0) return coreOrder
+
+        val aSuffix = a.substringAfter('-', "")
+        val bSuffix = b.substringAfter('-', "")
+        if (aSuffix.isEmpty() || bSuffix.isEmpty()) {
+            return aSuffix.isEmpty().compareTo(bSuffix.isEmpty())
+        }
+        return compareTokens(prereleaseToken.findAll(aSuffix).map { it.value }.toList(),
+            prereleaseToken.findAll(bSuffix).map { it.value }.toList())
+    }
+
+    private fun coreTokens(version: String): List<String> =
+        version.split('.', '_').filter { it.isNotBlank() }.dropLastWhile { part -> part.all { it == '0' } }
+
+    private fun compareTokens(a: List<String>, b: List<String>): Int {
+        for (i in 0 until minOf(a.size, b.size)) {
+            val x = a[i].toBigIntegerOrNull()
+            val y = b[i].toBigIntegerOrNull()
             val cmp = when {
-                x.first != null && y.first != null -> x.first!!.compareTo(y.first!!)
-                x.first != null -> 1
-                y.first != null -> -1
-                else -> x.second.compareTo(y.second, ignoreCase = true)
+                x != null && y != null -> x.compareTo(y)
+                x != null -> 1
+                y != null -> -1
+                else -> a[i].compareTo(b[i], ignoreCase = true)
             }
             if (cmp != 0) return cmp
         }
-        return 0
+        return a.size.compareTo(b.size)
     }
 
     fun isNewer(remoteName: String, remoteCode: Long?, localName: String, localCode: Long): Boolean {
@@ -77,6 +95,11 @@ internal object GitHubReleaseUpdates {
     }
 
     fun versionCodeFromText(text: String): Long? = versionCodeHint.find(text)?.groupValues?.get(1)?.toLongOrNull()
+
+    fun requireSuccessfulResponse(code: Int) {
+        if (code == 403 || code == 429) throw GitHubRateLimitException()
+        require(code in 200..299) { "GitHub 接口返回 $code" }
+    }
 
     fun parseReleases(json: String, localName: String, localCode: Long): AppUpdateCheck {
         val array = JSONArray(json)
@@ -98,7 +121,8 @@ internal object GitHubReleaseUpdates {
                 val tag = item.optString("name").ifBlank { continue }
                 val name = versionNameFromTag(tag)
                 add(AppReleaseUpdate(tag = tag, versionName = name,
-                    pageUrl = "https://github.com/$OWNER/$REPO/releases/tag/${tag.trimStart('/')}"))
+                    pageUrl = "https://github.com/$OWNER/$REPO/releases/tag/${tag.trimStart('/')}",
+                    prerelease = name.substringBefore('+').substringAfter('-', "").isNotEmpty()))
             }
         }
         return summarize(updates, localName, localCode, "github-tags",
@@ -109,7 +133,8 @@ internal object GitHubReleaseUpdates {
     private fun summarize(updates: List<AppReleaseUpdate>, localName: String, localCode: Long,
         source: String, empty: String, noApk: String? = null): AppUpdateCheck {
         if (updates.isEmpty()) return AppUpdateCheck(null, null, empty, source)
-        val latest = updates.firstOrNull { !it.prerelease } ?: updates.first()
+        val byVersion = Comparator<AppReleaseUpdate> { a, b -> compareVersionNames(a.versionName, b.versionName) }
+        val latest = updates.filterNot { it.prerelease }.maxWithOrNull(byVersion) ?: updates.maxWith(byVersion)
         val newer = isNewer(latest.versionName, latest.versionCode, localName, localCode)
         val candidate = latest.takeIf { newer }
         val message = when {
@@ -140,13 +165,6 @@ internal object GitHubReleaseUpdates {
             .filter { it.optString("name").endsWith(".apk", ignoreCase = true) }
         return apks.firstOrNull { it.optString("name").contains("arm64", ignoreCase = true) } ?: apks.firstOrNull()
     }
-
-    private fun tokenize(version: String): List<Pair<Long?, String>> =
-        version.split('.', '-', '_', '+').filter { it.isNotBlank() }.map { part ->
-            val digits = part.takeWhile { it.isDigit() }
-            if (digits.isNotEmpty() && digits.length == part.length) digits.toLong() to part
-            else null to part
-        }
 }
 
 internal class AppUpdateChecker(
@@ -213,14 +231,11 @@ internal class AppUpdateChecker(
             DurableFiles.write(cache, JSONObject().put("source", source).put("body", body).put("checkedAt", now()))
             AppUpdateStore.publish(result)
             result
+        } catch (failure: CancellationException) {
+            throw failure
         } catch (failure: Exception) {
             val fallback = cached()
-            val message = when {
-                failure is java.io.IOException -> "暂时无法检查更新，请稍后重试"
-                failure.message?.contains("403") == true || failure.message?.contains("rate limit", true) == true ->
-                    "GitHub 接口暂时限流，请稍后再试"
-                else -> "暂时无法检查更新，请稍后重试"
-            }
+            val message = (failure as? GitHubRateLimitException)?.message ?: "暂时无法检查更新，请稍后重试"
             val result = fallback?.copy(message = message, ok = false) ?: AppUpdateCheck(null, null, message, "github-releases", ok = false)
             AppUpdateStore.publish(result)
             result
@@ -236,8 +251,7 @@ internal class AppUpdateChecker(
             .get().build()
         client.newCall(request).execute().use { response ->
             currentCoroutineContext().ensureActive()
-            if (response.code == 403) error("rate limit ${response.code}")
-            require(response.isSuccessful) { "GitHub 接口返回 ${response.code}" }
+            GitHubReleaseUpdates.requireSuccessfulResponse(response.code)
             val bytes = response.body?.bytes() ?: ByteArray(0)
             require(bytes.size <= 512 * 1024) { "更新信息过大" }
             return bytes.toString(Charsets.UTF_8)

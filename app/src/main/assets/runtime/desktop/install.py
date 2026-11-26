@@ -46,9 +46,59 @@ def desktop_tools_ready():
     return all(shutil.which(tool) for tool in TOOLS) and Path('/usr/share/novnc/vnc.html').is_file()
 
 
+def compare_debian_versions(a: str, b: str) -> int:
+    """Compare Debian versions according to Debian Policy §5.6.12."""
+    def split(version):
+        epoch, separator, rest = version.partition(':')
+        if not separator:
+            epoch, rest = '0', epoch
+        upstream, separator, revision = rest.rpartition('-')
+        return int(epoch), upstream if separator else revision, revision if separator else ''
+
+    def is_digit(character):
+        return '0' <= character <= '9'
+
+    def order(character):
+        if character == '~':
+            return -1
+        if not character or is_digit(character):
+            return 0
+        if character.isascii() and character.isalpha():
+            return ord(character)
+        return ord(character) + 256
+
+    def compare_part(left, right):
+        i = j = 0
+        while i < len(left) or j < len(right):
+            while ((i < len(left) and not is_digit(left[i])) or
+                   (j < len(right) and not is_digit(right[j]))):
+                a_order = order(left[i:i + 1])
+                b_order = order(right[j:j + 1])
+                if a_order != b_order:
+                    return (a_order > b_order) - (a_order < b_order)
+                i += 1
+                j += 1
+
+            start_i, start_j = i, j
+            while i < len(left) and is_digit(left[i]):
+                i += 1
+            while j < len(right) and is_digit(right[j]):
+                j += 1
+            a_digit = int(left[start_i:i] or '0')
+            b_digit = int(right[start_j:j] or '0')
+            if a_digit != b_digit:
+                return (a_digit > b_digit) - (a_digit < b_digit)
+        return 0
+
+    a_epoch, a_upstream, a_revision = split(a)
+    b_epoch, b_upstream, b_revision = split(b)
+    if a_epoch != b_epoch:
+        return (a_epoch > b_epoch) - (a_epoch < b_epoch)
+    return compare_part(a_upstream, b_upstream) or compare_part(a_revision, b_revision)
+
+
 def package_at_least(current, wanted):
-    return current is not None and (current == wanted or subprocess.run(
-        ['dpkg', '--compare-versions', current, 'ge', wanted]).returncode == 0)
+    return current is not None and compare_debian_versions(current, wanted) >= 0
 
 
 def preinstalled_packages_ready():

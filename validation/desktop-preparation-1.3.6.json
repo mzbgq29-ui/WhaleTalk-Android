@@ -1,5 +1,6 @@
 {
   "checks": [
+    "pure-Python Debian versions compare epochs, tildes, revisions, numeric runs and ASCII ordering",
     "old-image marker rebased only after actual package inventory validation",
     "malformed marker repaired from package inventory",
     "newer user packages retained without reinstall loop",
@@ -11,6 +12,6 @@
     "binary binds to exact current compatibility sources"
   ],
   "result": "passed",
-  "count": 9,
-  "scope": "No apt/dpkg installation, network, QQ account or model API; dependency comparison uses native dpkg comparator."
+  "count": 10,
+  "scope": "No apt/dpkg installation, network, QQ account or model API; dependency checks use pure-Python Debian version comparison."
 }

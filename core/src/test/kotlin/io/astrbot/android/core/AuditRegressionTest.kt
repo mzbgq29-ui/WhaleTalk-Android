@@ -7,6 +7,37 @@ import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 
 class AuditRegressionTest {
+    @Test fun redactsCredentialHeadersAndBasicAuth() {
+        val log = "  X-API-Key: fixture header value\r\napi-key: fixture-key\n" +
+            "api_key: fixture-legacy\nrequest used bAsIc dXNlcjpwYXNz+/== for login\n" +
+            "Authorization: Bearer fixture-authorization\nX-API-Key:\n服务已启动 | Service ready"
+        val expected = "  X-API-Key: [已隐藏]\r\napi-key: [已隐藏]\n" +
+            "api_key: [已隐藏]\nrequest used bAsIc [已隐藏] for login\n" +
+            "Authorization: [已隐藏]\nX-API-Key:\n服务已启动 | Service ready"
+        assertEquals(expected, SecretRedactor.redact(log))
+    }
+
+    @Test fun redactsStandaloneGeminiGithubAndExistingKeyFormats() {
+        val suffix = "abcdefghijklmnopqrstuvwxyz0123"
+        val credentials = listOf("AIza$suffix", "github_pat_$suffix", "sk-$suffix") +
+            "pousr".map { "gh" + it + "_$suffix" }
+        assertEquals(credentials.joinToString(" | ") { "[已隐藏]" },
+            SecretRedactor.redact(credentials.joinToString(" | ")))
+        val log = "模型服务已启动 [ready] | API gateway healthy | short examples: AIza123 ghp_sample"
+        assertEquals(log, SecretRedactor.redact(log))
+    }
+
+    @Test fun redactsSensitiveUrlParametersWithoutRemovingTheirNeighbors() {
+        val log = """访问 "https://example.test/v1?API_KEY=a%2Bb&view=full&apikey=second&access_token=third&token=fourth&key=fifth&secret=sixth&lang=zh" 完成"""
+        val expected = """访问 "https://example.test/v1?API_KEY=[已隐藏]&view=full&apikey=[已隐藏]&access_token=[已隐藏]&token=[已隐藏]&key=[已隐藏]&secret=[已隐藏]&lang=zh" 完成"""
+        assertEquals(expected, SecretRedactor.redact(log))
+        assertEquals(expected, SecretRedactor.redact(expected))
+        val emptyToken = "https://example.test/v1?access_token=&view=full"
+        assertEquals(emptyToken, SecretRedactor.redact(emptyToken))
+        assertEquals("""{"password":[已隐藏], "status":"ready"}""",
+            SecretRedactor.redact("""{"password":"fixture-password", "status":"ready"}"""))
+    }
+
     @Test fun phonePortraitZoomAlwaysEnlargesAndKeepsCenter() {
         val fitted = RfbViewport(720, 960, 1080, 1800, true)
         val zoomed = fitted.copy(fit = false)

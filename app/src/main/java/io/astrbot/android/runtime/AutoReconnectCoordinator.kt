@@ -5,6 +5,8 @@ import android.content.Context
 import io.astrbot.android.core.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -34,13 +36,16 @@ internal class AutoReconnectCoordinator(
     private val maintenance: () -> MaintenanceState,
     private val busy: () -> Boolean,
 ) {
-    @Volatile private var job: Job? = null
+    private var job: Job? = null
     private val observations = combine(snowLuma, astrBot, ::Pair)
     private val channelDrop = OneBotDropTracker()
 
-    fun cancel() { job?.cancel() }
+    @Synchronized fun cancel() {
+        job?.cancel()
+        AutoReconnectStore.state.value = AutoReconnectStatus()
+    }
 
-    fun onChannel(next: OneBotState, snowGeneration: Long, astrGeneration: Long) {
+    @Synchronized fun onChannel(next: OneBotState, snowGeneration: Long, astrGeneration: Long) {
         val canRecover = next == OneBotState.DISCONNECTED && job?.isActive != true &&
             !busy() && maintenance() == MaintenanceState.IDLE &&
             eligible(snowLuma.value, astrBot.value, snowGeneration, astrGeneration)
@@ -60,10 +65,15 @@ internal class AutoReconnectCoordinator(
             AutoReconnectSettings(context).enabled() && desired()
 
     private suspend fun recover(initialGeneration: Long, astrGeneration: Long) {
+        val coroutine = currentCoroutineContext()
         var generation = initialGeneration
+        var observationTimedOut = false
         for ((index, wait) in RestartPolicy.DEFAULT_DELAYS.withIndex()) {
             val pending = AutoReconnectStatus(layer = CHANNEL, attempt = index + 1, delayMillis = wait)
-            AutoReconnectStore.state.value = pending
+            synchronized(this) {
+                coroutine.ensureActive()
+                AutoReconnectStore.state.value = pending
+            }
             try {
                 val interrupted = withTimeoutOrNull(wait) {
                     observations.first { (snow, bot) ->
@@ -73,8 +83,10 @@ internal class AutoReconnectCoordinator(
                 if (interrupted != null) return
                 generation = restart {
                     val snow = snowLuma.value
+                    val canRetryChannel = snow.oneBot == OneBotState.DISCONNECTED ||
+                        (observationTimedOut && snow.oneBot == OneBotState.UNKNOWN)
                     eligible(snow, astrBot.value, generation, astrGeneration) &&
-                        snow.oneBot == OneBotState.DISCONNECTED && !busy() && maintenance() == MaintenanceState.IDLE
+                        canRetryChannel && !busy() && maintenance() == MaintenanceState.IDLE
                 } ?: return
             } finally {
                 AutoReconnectStore.state.compareAndSet(pending, AutoReconnectStatus())
@@ -85,14 +97,28 @@ internal class AutoReconnectCoordinator(
                     !eligible(snow, bot, generation, astrGeneration) ||
                         snow.oneBot in setOf(OneBotState.CONNECTED, OneBotState.DISCONNECTED, OneBotState.UNCONFIGURED)
                 }
-            } ?: return
-            if (!eligible(result.first, result.second, generation, astrGeneration) || result.first.oneBot != OneBotState.DISCONNECTED) return
+            }
+            observationTimedOut = result == null
+            val (snow, bot) = result ?: (snowLuma.value to astrBot.value)
+            if (!eligible(snow, bot, generation, astrGeneration)) return
+            if (observationTimedOut && snow.oneBot == OneBotState.UNKNOWN) continue
+            if (snow.oneBot != OneBotState.DISCONNECTED) return
         }
-        AutoReconnectStore.state.value = AutoReconnectStatus(layer = CHANNEL, attempt = RestartPolicy.DEFAULT_DELAYS.size, exhausted = true)
+        synchronized(this) {
+            coroutine.ensureActive()
+            AutoReconnectStore.state.value = AutoReconnectStatus(layer = CHANNEL, attempt = RestartPolicy.DEFAULT_DELAYS.size, exhausted = true)
+        }
         ConnectionAlerts(context).notifyGiveUp(CHANNEL)
     }
 
     fun onProcess(id: ServiceId, previous: ServiceStatus, next: ServiceStatus) {
+        // Manual restarts transition the supervisors directly and may never call cancel().
+        if (next.process == ProcessState.STOPPED || next.process == ProcessState.STARTING) {
+            val status = AutoReconnectStore.state.value
+            if (status.layer == CHANNEL || status.layer == id.label) {
+                AutoReconnectStore.state.compareAndSet(status, AutoReconnectStatus())
+            }
+        }
         if (previous.process in setOf(ProcessState.RUNNING, ProcessState.STARTING) && next.process == ProcessState.CRASHED) {
             ConnectionAlerts(context).notifyProcessDropout(id.label)
             if (next.detail.contains("已暂停自动重启")) {

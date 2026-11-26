@@ -2,7 +2,9 @@
 """Check QQ/SnowLuma launch environments and existing account-home selection."""
 from pathlib import Path
 from unittest.mock import patch
+from contextlib import redirect_stderr, redirect_stdout
 import importlib.util
+import io
 import json
 import os
 import stat
@@ -37,8 +39,9 @@ with tempfile.TemporaryDirectory(prefix='bigfish-snow-launch-') as temporary:
     (qq / 'resources/app/wrapper.node').touch()
     qq_config = folder / 'persistent/home/.config/QQ/versions/config.json'
     qq_config.parent.mkdir(parents=True)
-    previous = {'curVersion': 'hot-updated', 'onErrorVersions': ['older']}
+    previous = {'curVersion': 'hot-updated', 'currentVersion': 'hot-updated', 'onErrorVersions': ['older']}
     qq_config.write_text(json.dumps(previous))
+    backup_time = 2_000_000_000 * 10**9
     calls = []
 
     def launch(arguments, env=None, cwd=None):
@@ -54,6 +57,7 @@ with tempfile.TemporaryDirectory(prefix='bigfish-snow-launch-') as temporary:
     with patch.object(launcher, 'launch', launch), \
             patch.object(launcher.signal, 'signal'), \
             patch.object(launcher.subprocess, 'run', return_value=SimpleNamespace(returncode=0)), \
+            patch.object(launcher.time, 'time_ns', return_value=backup_time - 10**9), \
             patch.dict(os.environ, {'XDG_RUNTIME_DIR': '/unrelated-runtime', 'SNOWLUMA_HOOK_RUNTIME_DIR': '/unrelated-hook'}):
         assert launcher.main() == 0
     assert len(calls) == 3
@@ -64,7 +68,7 @@ with tempfile.TemporaryDirectory(prefix='bigfish-snow-launch-') as temporary:
     assert qq_env['ASTRBOT_COMPAT_SELF_MEMORY'] == '1'
     assert calls[2][2] == qq
     assert json.loads(qq_config.read_text()) == {
-        'curVersion': pinned_version, 'onErrorVersions': ['older', 'hot-updated'],
+        'curVersion': pinned_version, 'currentVersion': pinned_version, 'onErrorVersions': ['older', 'hot-updated'],
     }
     [original] = qq_config.parent.glob('config.json.whaletalk-backup-*')
     assert json.loads(original.read_text()) == previous
@@ -72,3 +76,42 @@ with tempfile.TemporaryDirectory(prefix='bigfish-snow-launch-') as temporary:
     assert profile['symbol'] == 'snowluma_linux_hook_start_dynamic'
     assert profile['waitModule'] == 'wrapper.node' and profile['delayMs'] == 5000
     print('Pinned QQ package, hot-update recovery, private IPC and existing account HOME: passed')
+
+    home = folder / 'persistent/home'
+    qq_config.write_text('{broken')
+    warnings = io.StringIO()
+    with redirect_stderr(warnings):
+        launcher.isolate_hot_update(home, pinned_version, enabled=True)
+    [corrupt] = qq_config.parent.glob('config.json.corrupt-*')
+    assert corrupt.read_text() == '{broken'
+    assert corrupt.name in warnings.getvalue() and 'warning' in warnings.getvalue()
+    assert json.loads(qq_config.read_text()) == {'curVersion': pinned_version, 'onErrorVersions': []}
+    print('Corrupt QQ version config preserved and replaced with pinned defaults: passed')
+
+    partially_pinned = {'curVersion': pinned_version, 'currentVersion': 'hot-updated', 'onErrorVersions': ['hot-updated']}
+    qq_config.write_text(json.dumps(partially_pinned))
+    with patch.object(launcher.time, 'time_ns', return_value=backup_time - 1):
+        launcher.isolate_hot_update(home, pinned_version, enabled=True)
+    assert json.loads(qq_config.read_text()) == dict(partially_pinned, currentVersion=pinned_version)
+
+    old = qq_config.with_name('config.json.whaletalk-backup-1999999999')
+    old.write_text('{}')
+    newer = qq_config.with_name('config.json.whaletalk-backup-2000000001000')
+    newer.write_text('{}')
+    with redirect_stdout(io.StringIO()):
+        for i in range(7):
+            config = {'currentVersion': f'hot-update-{i}', 'onErrorVersions': []}
+            qq_config.write_text(json.dumps(config))
+            with patch.object(launcher.time, 'time_ns', return_value=backup_time + i):
+                launcher.isolate_hot_update(home, pinned_version, enabled=True)
+            assert json.loads(qq_config.read_text()) == {
+                'curVersion': pinned_version, 'currentVersion': pinned_version,
+                'onErrorVersions': [f'hot-update-{i}'],
+            }
+    backups = sorted(qq_config.parent.glob('config.json.whaletalk-backup-*'))
+    assert len(backups) == 5 and newer in backups and old not in backups and original not in backups
+    assert [json.loads(backup.read_text())['currentVersion'] for backup in backups if backup != newer] == [
+        f'hot-update-{i}' for i in range(3, 7)
+    ]
+    assert corrupt.is_file()
+    print('QQ currentVersion normalized and five newest hot-update backups retained: passed')

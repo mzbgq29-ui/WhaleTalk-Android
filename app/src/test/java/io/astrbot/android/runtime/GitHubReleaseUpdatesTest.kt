@@ -12,6 +12,22 @@ class GitHubReleaseUpdatesTest {
         assertTrue(GitHubReleaseUpdates.compareVersionNames("1.10.0", "1.9.0") > 0)
     }
 
+    @Test fun ordersPrereleasesBeforeStableVersions() {
+        val versions = listOf("1.8.2-alpha1", "1.8.2-alpha.2", "1.8.2-beta.1", "1.8.2-rc1", "1.8.2-rc10", "1.8.2")
+        for ((earlier, later) in versions.zipWithNext()) {
+            assertTrue(GitHubReleaseUpdates.compareVersionNames(earlier, later) < 0)
+            assertTrue(GitHubReleaseUpdates.compareVersionNames(later, earlier) > 0)
+        }
+        assertTrue(GitHubReleaseUpdates.compareVersionNames("1.8.2-rc1", "1.8.2") < 0)
+        assertTrue(GitHubReleaseUpdates.compareVersionNames("1.8.3-alpha1", "1.8.2") > 0)
+    }
+
+    @Test fun ignoresTrailingZeroComponents() {
+        assertEquals(0, GitHubReleaseUpdates.compareVersionNames("1.8.0", "1.8"))
+        assertEquals(0, GitHubReleaseUpdates.compareVersionNames("1.8", "1.8.0.0"))
+        assertTrue(GitHubReleaseUpdates.compareVersionNames("1.8", "1.8.0-rc1") > 0)
+    }
+
     @Test fun prefersVersionCodeWhenPresent() {
         assertTrue(GitHubReleaseUpdates.isNewer("1.4.0", 100500, "1.5.0", 100400))
         assertFalse(GitHubReleaseUpdates.isNewer("1.6.0", 100300, "1.5.0", 100500))
@@ -73,12 +89,47 @@ class GitHubReleaseUpdatesTest {
     }
 
     @Test fun parsesTagsWhenReleasesAreMissing() {
-        val json = """[{"name": "v1.5.0"}, {"name": "v1.4.0"}]"""
+        val json = """[{"name": "v1.4.0"}, {"name": "v1.6.0-rc1"}, {"name": "v1.5.0"}]"""
         val check = GitHubReleaseUpdates.parseTags(json, "1.4.0", 100400)
         assertEquals("1.5.0", check.candidate?.versionName)
         assertNull(check.candidate?.apkUrl)
         assertTrue(check.message.contains("尚未提供安装包"))
         assertEquals("github-tags", check.source)
+    }
+
+    @Test fun findsTheHighestStableReleaseRegardlessOfApiOrder() {
+        val json = """
+            [
+              {"tag_name": "v1.8.0"},
+              {"tag_name": "v2.0.0-rc1", "prerelease": true},
+              {"tag_name": "v1.8.2"},
+              {"tag_name": "v1.8.1"}
+            ]
+        """.trimIndent()
+        val check = GitHubReleaseUpdates.parseReleases(json, "1.8.1", 100801)
+        assertEquals("1.8.2", check.latest?.versionName)
+        assertEquals("1.8.2", check.candidate?.versionName)
+    }
+
+    @Test fun findsTheHighestPrereleaseWhenThereAreNoStableEntries() {
+        val releases = """[{"tag_name":"v1.8.2-beta.1","prerelease":true},{"tag_name":"v1.8.2-rc1","prerelease":true}]"""
+        val tags = """[{"name":"v1.8.2-beta.1"},{"name":"v1.8.2-rc1"}]"""
+        val releaseCheck = GitHubReleaseUpdates.parseReleases(releases, "1.8.1", 100801)
+        val tagCheck = GitHubReleaseUpdates.parseTags(tags, "1.8.1", 100801)
+        for (check in listOf(releaseCheck, tagCheck)) {
+            assertEquals("1.8.2-rc1", check.candidate?.versionName)
+            assertEquals(true, check.latest?.prerelease)
+        }
+    }
+
+    @Test fun handles403And429AsRateLimiting() {
+        GitHubReleaseUpdates.requireSuccessfulResponse(200)
+        for (code in listOf(403, 429)) {
+            val failure = runCatching { GitHubReleaseUpdates.requireSuccessfulResponse(code) }.exceptionOrNull()
+            assertEquals("GitHub 接口暂时限流，请稍后再试", failure?.message)
+        }
+        val other = runCatching { GitHubReleaseUpdates.requireSuccessfulResponse(404) }.exceptionOrNull()
+        assertEquals("GitHub 接口返回 404", other?.message)
     }
 
     @Test fun emptyReleaseListIsExplicit() {

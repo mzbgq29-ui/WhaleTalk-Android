@@ -13,7 +13,11 @@ import org.junit.Assert.*
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
+import java.io.IOException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLException
 
 class BigFishModelVerifierTest {
     private lateinit var server: MockWebServer
@@ -53,11 +57,43 @@ class BigFishModelVerifierTest {
         assertEquals(1, server.requestCount)
     }
     @Test fun nullContentAndMalformedResponsesDoNotPassValidation() = runBlocking {
-        for (body in listOf("not json", "{}", """{"choices":[{"message":{"content":null,"reasoning_content":null}}]}""")) {
+        val invalidBodies = listOf(
+            "not json", "{}",
+            """{"choices":[{"message":{"content":null,"reasoning_content":null,"reasoning":null}}]}""",
+            """{"choices":[{"message":{"content":[{"type":"image"},{"text":" "},{"text":null}]}}]}""",
+        )
+        for (body in invalidBodies) {
             server.enqueue(MockResponse().setBody(body))
             assertTrue(runCatching { verifier.verify(input()) }.isFailure)
         }
+        assertEquals(invalidBodies.size, server.requestCount)
+    }
+    @Test fun acceptsReasoningAndMultimodalTextReplies() = runBlocking {
+        for (message in listOf(
+            """{"content":null,"reasoning":"considered the request"}""",
+            """{"reasoning_content":"considered the request"}""",
+            """{"content":[{"type":"image"},{"type":"text","text":"OK"}]}""",
+        )) {
+            server.enqueue(MockResponse().setBody("""{"choices":[{"message":$message}]}"""))
+            verifier.verify(input())
+        }
         assertEquals(3, server.requestCount)
+    }
+    @Test fun transportFailuresUseSpecificMessagesWithoutExposingTheKey() = runBlocking {
+        val input = input()
+        val raw = "Sensitive: " + input.key
+        for ((error, expected) in listOf(
+            SocketTimeoutException(raw) to "模型服务响应超时，请检查网络或稍后重试",
+            UnknownHostException(raw) to "无法解析模型服务域名，请检查接口地址",
+            SSLException(raw) to "安全连接验证失败，请检查系统时间或接口证书",
+            IOException(raw) to "未连上模型服务，请检查网络、接口地址后重试",
+        )) {
+            val client = OkHttpClient.Builder().addInterceptor { throw error }.build()
+            val failure = runCatching { BigFishModelVerifier(client).verify(input) }.exceptionOrNull()
+            assertEquals(expected, failure?.message)
+            assertFalse(failure.toString().contains(input.key))
+            assertNull(failure?.cause)
+        }
     }
     @Test fun responseIsBounded() = runBlocking {
         server.enqueue(MockResponse().setBody("x".repeat(140000)))

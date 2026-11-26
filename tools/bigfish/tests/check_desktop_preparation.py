@@ -8,6 +8,22 @@ source=project/'app/src/main/assets/runtime/desktop/install.py'
 tree=ast.parse(source.read_text());selected=[n for n in tree.body if isinstance(n,(ast.Import,ast.ImportFrom,ast.FunctionDef))]
 module={};exec(compile(ast.fix_missing_locations(ast.Module(body=selected,type_ignores=[])),str(source),'exec'),module)
 checks=[]
+compare_versions = module['compare_debian_versions']
+package_at_least = module['package_at_least']
+with patch.object(subprocess, 'run', side_effect=AssertionError('Version comparison spawned a subprocess')):
+    for older, newer in (
+        ('99.0', '1:0.1'), ('9:99.0', '10:0.1'),
+        ('1.0~beta1', '1.0'), ('1.0~rc1', '1.0~rc2'), ('1.0~~', '1.0~'),
+        ('1.0-1', '1.0-2'), ('1.0-hot-1', '1.0-hot-2'), ('1.0-99', '1.1-1'),
+        ('1.2', '1.10'), ('1.0', '1.0a'), ('1.0a', '1.0+'), ('1.0+', '1.0.'),
+    ):
+        assert compare_versions(older, newer) < 0 and compare_versions(newer, older) > 0, (older, newer)
+        assert not package_at_least(older, newer) and package_at_least(newer, older)
+    for left, right in (('1.0-1', '1.0-1'), ('0:1.02-01', '1.2-1'), ('1.0', '1.0-0')):
+        assert compare_versions(left, right) == 0 and compare_versions(right, left) == 0
+        assert package_at_least(left, right) and package_at_least(right, left)
+    assert not package_at_least(None, '1.0')
+checks.append('pure-Python Debian versions compare epochs, tildes, revisions, numeric runs and ASCII ordering')
 with tempfile.TemporaryDirectory() as tmp:
     root=Path(tmp);module.update(ROOT=root,MARKER=root/'desktop.json',PACKAGES_MARKER=root/'packages.json',PENDING=root/'desktop.pending',COMPATIBILITY_FILES=['guest_compat.c','proc_locks.py','guest-compat'],SOURCES={'architecture':'arm64'})
     (root/'bundled-packages').mkdir();bundle={'schemaVersion':1,'architecture':'arm64','baseRuntimeSha256':'new-image','packages':[{'name':'fixture','architecture':'arm64','version':'1.0'}]}
@@ -18,7 +34,9 @@ with tempfile.TemporaryDirectory() as tmp:
     assert json.loads(marker.read_text())['baseRuntimeSHA256']=='new-image';checks.append('old-image marker rebased only after actual package inventory validation')
     marker.write_text('{broken');assert module['preinstalled_packages_ready']();checks.append('malformed marker repaired from package inventory')
     module['installed_packages']=lambda:{('fixture','arm64'):'2.0'}
-    assert module['preinstalled_packages_ready']();checks.append('newer user packages retained without reinstall loop')
+    with patch.object(subprocess, 'run', side_effect=AssertionError('Version comparison spawned a subprocess')):
+        assert module['preinstalled_packages_ready']()
+    checks.append('newer user packages retained without reinstall loop')
     before=marker.read_bytes();module['installed_packages']=lambda:{}
     assert not module['preinstalled_packages_ready']() and marker.read_bytes()==before;checks.append('missing dependency never promoted as ready')
     module['installed_packages']=lambda:{('fixture','arm64'):'1.0'};module['desktop_tools_ready']=lambda:False
@@ -42,5 +60,5 @@ with tempfile.TemporaryDirectory() as tmp:
     spec=json.loads((root/'compat-binary.json').read_text());h=hashlib.sha256()
     for name in module['COMPATIBILITY_FILES']:h.update((root/name).read_bytes())
     assert h.hexdigest()==spec['sourceSHA256'];checks.append('binary binds to exact current compatibility sources')
-report={'checks':checks,'result':'passed','count':len(checks),'scope':'No apt/dpkg installation, network, QQ account or model API; dependency comparison uses native dpkg comparator.'}
+report={'checks':checks,'result':'passed','count':len(checks),'scope':'No apt/dpkg installation, network, QQ account or model API; dependency checks use pure-Python Debian version comparison.'}
 (project/'validation/desktop-preparation-1.3.6.json').write_text(json.dumps(report,indent=2));print(json.dumps(report,indent=2))

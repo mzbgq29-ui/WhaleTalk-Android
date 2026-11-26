@@ -76,20 +76,53 @@ def isolate_hot_update(home, pinned, enabled):
     config = pathlib.Path(home)/'.config'/'QQ'/'versions'/'config.json'
     if not enabled or not config.is_file():
         return
-    data = json.loads(config.read_text())
-    current = str(data.get('curVersion') or data.get('currentVersion') or '')
-    if not current or current == pinned:
-        return
-    stamp = str(int(time.time()))
-    backup = config.with_name('config.json.whaletalk-backup-' + stamp)
-    shutil.copy2(config, backup)
-    errors = data.get('onErrorVersions') or []
-    if current not in errors:
-        errors.append(current)
-    data['onErrorVersions'] = errors
-    data['curVersion'] = pinned
-    atomic(config, data)
-    print('WhaleTalk: isolated QQ hot-update '+current+' -> '+pinned+'; account data was not deleted', flush=True)
+    stamp = str(time.time_ns())
+    try:
+        data = json.loads(config.read_text())
+        if not isinstance(data, dict):
+            raise ValueError('Expected a JSON object')
+    except (OSError, ValueError):
+        corrupt = config.with_name('config.json.corrupt-' + stamp)
+        try:
+            shutil.copy2(config, corrupt)
+        except OSError:
+            config.replace(corrupt)
+        atomic(config, {'curVersion': pinned, 'onErrorVersions': []})
+        print(f'WhaleTalk: warning: recovered unreadable QQ version config; original saved as {corrupt.name}',
+              file=sys.stderr, flush=True)
+    else:
+        current = str(data.get('curVersion') or data.get('currentVersion') or '')
+        needs_pin = bool(current) and current != pinned
+        stale_alias = current == pinned and 'currentVersion' in data and data['currentVersion'] != pinned
+        if needs_pin or stale_alias:
+            backup = config.with_name('config.json.whaletalk-backup-' + stamp)
+            shutil.copy2(config, backup)
+            if needs_pin:
+                errors = data.get('onErrorVersions')
+                if not isinstance(errors, list):
+                    errors = []
+                if current not in errors:
+                    errors.append(current)
+                data['onErrorVersions'] = errors
+            data['curVersion'] = pinned
+            if 'currentVersion' in data:
+                data['currentVersion'] = pinned
+            atomic(config, data)
+            if needs_pin:
+                print('WhaleTalk: isolated QQ hot-update '+current+' -> '+pinned+'; account data was not deleted', flush=True)
+
+    def backup_time(path):
+        stamp = path.name.rsplit('-', 1)[-1]
+        # Older launchers used seconds and the Android guard uses milliseconds.
+        scale = {10: 10**9, 13: 10**6, 19: 1}.get(len(stamp))
+        if scale is not None and stamp.isascii() and stamp.isdecimal():
+            return int(stamp) * scale
+        return path.stat().st_mtime_ns
+
+    backups = (path for path in config.parent.glob('config.json.whaletalk-backup-*') if path.is_file())
+    backups = sorted(backups, key=backup_time, reverse=True)
+    for backup in backups[5:]:
+        backup.unlink(missing_ok=True)
 
 def main():
     STATE.mkdir(parents=True,exist_ok=True)

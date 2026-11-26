@@ -22,6 +22,12 @@ jobs:
         run: python -B -c "import ast; from pathlib import Path; roots=[Path('tools'), Path('app/src/main/assets')]; [ast.parse(p.read_text(encoding='utf8'), filename=str(p)) for root in roots if root.exists() for p in root.rglob('*.py')]"
       - name: Check guest_compat.c syntax
         run: gcc -fsyntax-only -std=gnu11 -Wall app/src/main/assets/runtime/desktop/guest_compat.c
+      - name: Run offline runtime checks
+        run: |
+          python3 tools/bigfish/check_qq_preparation.py
+          python3 tools/bigfish/tests/check_snowluma_launch.py
+          python3 tools/bigfish/tests/check_desktop_preparation.py
+          python3 tools/bigfish/tests/check_ipc_path_length.py
       - name: Compile application sources
         run: bash gradlew :core:compileKotlin :app:compileBootstrapReleaseKotlin
       - name: Run unit tests and compile Android instrumentation tests
