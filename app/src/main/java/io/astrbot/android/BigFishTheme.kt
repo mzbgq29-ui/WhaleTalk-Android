@@ -20,17 +20,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 internal val LocalBigFishDark = staticCompositionLocalOf { false }
+internal val LocalBigFishSuccess = staticCompositionLocalOf { Color(0xFF10B981) }
 
 @Composable internal fun BigFishTheme(content: @Composable (Boolean) -> Unit) {
     val context = LocalContext.current
     val preferences = remember { context.getSharedPreferences("bigfish-ui", 0) }
     var selection by remember { mutableStateOf(preferences.getString("theme", "system")) }
     var dynamicColor by remember { mutableStateOf(preferences.getBoolean("dynamic_color", false)) }
-    DisposableEffect(preferences) {
-        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+    val listener = remember(preferences) {
+        android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key == "theme") selection = preferences.getString("theme", "system")
             if (key == "dynamic_color") dynamicColor = preferences.getBoolean("dynamic_color", false)
         }
+    }
+    DisposableEffect(preferences, listener) {
         preferences.registerOnSharedPreferenceChangeListener(listener)
         onDispose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
     }
@@ -111,6 +114,7 @@ internal val LocalBigFishDark = staticCompositionLocalOf { false }
         CompositionLocalProvider(
             LocalContentColor provides colors.onBackground,
             LocalBigFishDark provides dark,
+            LocalBigFishSuccess provides if (dark) Color(0xFF34D399) else Color(0xFF10B981),
         ) {
             BoxWithConstraints(Modifier.fillMaxSize().background(colors.background)) {
                 val compact = maxHeight < 520.dp || LocalDensity.current.fontScale > 1.25f

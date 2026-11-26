@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -34,6 +35,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -246,6 +248,8 @@ internal val LocalBigFishCompact = staticCompositionLocalOf { false }
             val slotWidth = (maxWidth - horizontalPad * 2) / items.size
             val slotPx = with(density) { slotWidth.toPx() }.coerceAtLeast(1f)
             val padPx = with(density) { horizontalPad.toPx() }
+            val currentSlotPx by rememberUpdatedState(slotPx)
+            val currentPadPx by rememberUpdatedState(padPx)
 
             // Interactive horizontal drag across the entire glass dock
             Box(
@@ -255,7 +259,7 @@ internal val LocalBigFishCompact = staticCompositionLocalOf { false }
                         detectHorizontalDragGestures(
                             onDragStart = { offset ->
                                 dragging = true
-                                val idx = ((offset.x - padPx) / slotPx - 0.5f)
+                                val idx = ((offset.x - currentPadPx) / currentSlotPx - 0.5f)
                                     .coerceIn(0f, (currentItems.size - 1).toFloat())
                                 dragIndex = idx
                                 lastHapticIndex = idx.roundToInt().coerceIn(0, currentItems.lastIndex)
@@ -273,7 +277,7 @@ internal val LocalBigFishCompact = staticCompositionLocalOf { false }
                             },
                             onHorizontalDrag = { change, _ ->
                                 change.consume()
-                                val idx = ((change.position.x - padPx) / slotPx - 0.5f)
+                                val idx = ((change.position.x - currentPadPx) / currentSlotPx - 0.5f)
                                     .coerceIn(0f, (currentItems.size - 1).toFloat())
                                 dragIndex = idx
                                 val hovered = idx.roundToInt().coerceIn(0, currentItems.lastIndex)
@@ -338,7 +342,8 @@ internal val LocalBigFishCompact = staticCompositionLocalOf { false }
                 Row(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = horizontalPad),
+                        .padding(horizontal = horizontalPad)
+                        .selectableGroup(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     items.forEachIndexed { index, item ->
@@ -387,6 +392,7 @@ internal val LocalBigFishCompact = staticCompositionLocalOf { false }
                                 fontWeight = if (hoverFocus) FontWeight.SemiBold else FontWeight.Medium,
                                 color = itemTint,
                                 maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                     }

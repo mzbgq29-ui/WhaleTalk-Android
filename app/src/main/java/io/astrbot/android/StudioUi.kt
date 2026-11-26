@@ -9,6 +9,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -28,6 +29,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.*
 import androidx.compose.ui.text.style.TextOverflow
@@ -279,6 +281,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
     numeric: Boolean = false,
     enabled: Boolean = true,
     hint: String? = null,
+    clearable: Boolean = false,
+    onDone: (() -> Unit)? = null,
 ) {
     var reveal by remember { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -307,29 +311,44 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
             unfocusedBorderColor = colors.outlineVariant,
         ),
         visualTransformation = if (secret && !reveal) PasswordVisualTransformation() else VisualTransformation.None,
-        trailingIcon = if (!secret) null else ({
-            TextButton(onClick = { reveal = !reveal }) { Text(if (reveal) "隐藏" else "显示") }
-        }),
+        trailingIcon = when {
+            secret -> ({ TextButton(onClick = { reveal = !reveal }) { Text(if (reveal) "隐藏" else "显示") } })
+            clearable && enabled && value.isNotEmpty() -> ({ TextButton(onClick = { onChange("") }) { Text("清除") } })
+            else -> null
+        },
         keyboardOptions = KeyboardOptions(
             keyboardType = if (secret) KeyboardType.Password else if (numeric) KeyboardType.Number else KeyboardType.Text,
             imeAction = if (multiline) ImeAction.Default else ImeAction.Done,
         ),
-        keyboardActions = KeyboardActions(onDone = { keyboard?.hide() }),
+        keyboardActions = KeyboardActions(onDone = {
+            if (onDone != null) onDone() else keyboard?.hide()
+        }),
     )
 }
 
 @Composable internal fun StudioSwitch(title: String, text: String, value: Boolean, enabled: Boolean = true, change: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 60.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .toggleable(value = value, enabled = enabled, role = Role.Switch, onValueChange = change)
+            .heightIn(min = 60.dp)
+            .padding(vertical = 4.dp, horizontal = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-            Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (text.isNotBlank()) {
+                Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
-        Switch(value, change, enabled = enabled)
+        Switch(checked = value, onCheckedChange = null, enabled = enabled)
     }
 }
 
 @Composable internal fun StudioStatus(label: String, text: String, okay: Boolean? = null) {
-    val dotColor = if (okay == true) Color(0xFF10B981) else MaterialTheme.colorScheme.outline
+    val dotColor = if (okay == true) LocalBigFishSuccess.current else MaterialTheme.colorScheme.outline
     Row(Modifier.fillMaxWidth().heightIn(min = 34.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         if (okay != null) {
             Box(

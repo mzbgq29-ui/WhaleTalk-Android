@@ -51,17 +51,30 @@ import org.json.JSONObject
     Text("语音识别和语音合成保持关闭。", style = MaterialTheme.typography.bodySmall)
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun StudioChat(vm: StudioModel, bottomInset: Dp = 0.dp) {
     val scroll = androidx.compose.foundation.lazy.rememberLazyListState()
     val colors = MaterialTheme.colorScheme
     val dark = LocalBigFishDark.current
     val keyboard = LocalSoftwareKeyboardController.current
+    var confirmNewChat by remember { mutableStateOf(false) }
     var previousSize by remember { mutableIntStateOf(0) }
     LaunchedEffect(vm.messages.size, vm.messages.lastOrNull()?.text?.length) {
         val nearBottom = (scroll.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) >= (previousSize - 2).coerceAtLeast(0)
         val sent = vm.messages.size != previousSize && vm.messages.lastOrNull()?.mine == true
         previousSize = vm.messages.size
         if (vm.messages.isNotEmpty() && (nearBottom || sent)) scroll.scrollToItem(vm.messages.lastIndex)
+    }
+    if (confirmNewChat) {
+        AlertDialog(
+            onDismissRequest = { confirmNewChat = false },
+            title = { Text("开始新对话") },
+            text = { Text("将清空当前界面中的聊天记录并新建本机对话，是否继续？") },
+            confirmButton = {
+                TextButton(onClick = { confirmNewChat = false; vm.session = ""; vm.messages.clear() }) { Text("新对话") }
+            },
+            dismissButton = { TextButton(onClick = { confirmNewChat = false }) { Text("取消") } },
+        )
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Surface(
@@ -75,7 +88,7 @@ import org.json.JSONObject
             ) {
                 Text("本机对话", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = colors.onSurfaceVariant)
                 FilledTonalButton(
-                    onClick = { vm.session = ""; vm.messages.clear() },
+                    onClick = { if (vm.messages.isEmpty()) vm.session = "" else confirmNewChat = true },
                     enabled = !vm.chatting && !vm.stoppingChat,
                     shape = CircleShape,
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
@@ -88,6 +101,7 @@ import org.json.JSONObject
         if (vm.messages.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Column(
+                    Modifier.padding(horizontal = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -101,38 +115,70 @@ import org.json.JSONObject
                     }
                     Text("和鲸语聊点什么", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text("发送一条消息开始聊天", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf("介绍一下你自己", "帮我检查当前设定", "写一段晚安问候").forEach { starter ->
+                            LiquidChoice(
+                                selected = false,
+                                onClick = {
+                                    if (!vm.chatting && !vm.stoppingChat) {
+                                        vm.chatDraft = starter
+                                        vm.send()
+                                    }
+                                },
+                                label = { Text(starter) },
+                            )
+                        }
+                    }
                 }
             }
         } else {
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                state = scroll,
-                contentPadding = PaddingValues(vertical = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                itemsIndexed(vm.messages) { _, item ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (item.mine) Arrangement.End else Arrangement.Start) {
-                        Surface(
-                            modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth(0.84f),
-                            shape = RoundedCornerShape(
-                                topStart = 20.dp,
-                                topEnd = 20.dp,
-                                bottomEnd = if (item.mine) 6.dp else 20.dp,
-                                bottomStart = if (item.mine) 20.dp else 6.dp,
-                            ),
-                            color = if (item.mine) colors.primary else colors.surface,
-                            border = if (item.mine) null else BorderStroke(
-                                0.75.dp,
-                                colors.outlineVariant.copy(alpha = if (dark) 0.75f else 0.90f),
-                            ),
-                        ) {
-                            SelectionContainer {
-                                Text(
-                                    text = item.text.ifBlank { "等待回复…" },
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                    color = if (item.mine) colors.onPrimary else colors.onSurface,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                val maxBubbleWidth = (maxWidth * 0.84f).coerceAtMost(420.dp)
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    state = scroll,
+                    contentPadding = PaddingValues(vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    itemsIndexed(vm.messages) { index, item ->
+                        val pendingReply = !item.mine && item.text.isBlank() && vm.chatting && index == vm.messages.lastIndex
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = if (item.mine) Arrangement.End else Arrangement.Start) {
+                            Surface(
+                                modifier = Modifier.widthIn(min = 44.dp, max = maxBubbleWidth),
+                                shape = RoundedCornerShape(
+                                    topStart = 20.dp,
+                                    topEnd = 20.dp,
+                                    bottomEnd = if (item.mine) 6.dp else 20.dp,
+                                    bottomStart = if (item.mine) 20.dp else 6.dp,
+                                ),
+                                color = if (item.mine) colors.primary else colors.surface,
+                                border = if (item.mine) null else BorderStroke(
+                                    0.75.dp,
+                                    colors.outlineVariant.copy(alpha = if (dark) 0.75f else 0.90f),
+                                ),
+                            ) {
+                                if (pendingReply) {
+                                    Row(
+                                        Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = colors.primary)
+                                        Text("正在思考…", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                                    }
+                                } else {
+                                    SelectionContainer {
+                                        Text(
+                                            text = item.text.ifBlank { "等待回复…" },
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                            color = if (item.mine) colors.onPrimary else colors.onSurface,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -232,7 +278,10 @@ private fun itemText(item: JSONObject): String = listOf("description", "desc", "
     }
     val importPersona=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if(uri!=null)vm.run("导入角色卡"){
-            val raw=withContext(Dispatchers.IO){context.contentResolver.openInputStream(uri)!!.use { TavernCharacterCard.decode(TavernCharacterCard.readLimited(it)) }}
+            val raw=withContext(Dispatchers.IO){
+                val stream=requireNotNull(context.contentResolver.openInputStream(uri)){"无法读取所选角色卡文件"}
+                stream.use { TavernCharacterCard.decode(TavernCharacterCard.readLimited(it)) }
+            }
             newEditor=true;editor=PersonaTemplates.importCard(raw)
             if(!raw.has("persona_id"))withContext(Dispatchers.IO){PersonaWarehouseRepository(context).importLocal(raw.toString().toByteArray())}
 
@@ -240,7 +289,9 @@ private fun itemText(item: JSONObject): String = listOf("description", "desc", "
     }
     val export=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")){uri ->
         val value=exportPersona;exportPersona=null
-        if(uri!=null&&value!=null)vm.run("导出人设"){withContext(Dispatchers.IO){context.contentResolver.openOutputStream(uri,"wt")!!.use{it.write(value.toString(2).toByteArray())}};vm.notice="人设已导出"}
+        if(uri!=null&&value!=null)vm.run("导出人设"){withContext(Dispatchers.IO){
+            requireNotNull(context.contentResolver.openOutputStream(uri,"wt")){"无法写入目标文件"}.use{it.write(value.toString(2).toByteArray())}
+        };vm.notice="人设已导出"}
     }
     var uploadTo by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
@@ -258,7 +309,7 @@ private fun itemText(item: JSONObject): String = listOf("description", "desc", "
             Text(if (loading) "正在读取…" else "来自本机的真实数据", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { refresh++ }, enabled = !loading) { Text("刷新") }
         }
-        if (page != StudioPage.STATS) StudioField(query, { query = it }, "搜索已加载的内容")
+        if (page != StudioPage.STATS) StudioField(query, { query = it }, "搜索已加载的内容", clearable = true)
         if (page in listOf(StudioPage.PERSONAS, StudioPage.KNOWLEDGE, StudioPage.SCHEDULE, StudioPage.PLUGINS))
             LiquidButton(onClick = { newEditor = true; editor = JSONObject() }, Modifier.fillMaxWidth(), enabled = !vm.busy) {
                 Text(when (page) { StudioPage.PERSONAS -> "写一个新人设"; StudioPage.KNOWLEDGE -> "创建知识库"; StudioPage.SCHEDULE -> "创建定时任务"; else -> "从 GitHub 安装插件" })
@@ -310,7 +361,7 @@ private fun itemText(item: JSONObject): String = listOf("description", "desc", "
                     "disabled" to "未启用 ${counts["disabled"] ?: 0}",
                     "failed" to "失败 ${counts["failed"] ?: 0}",
                 ).forEach { (id, label) ->
-                    FilterChip(selected = pluginFilter == id, onClick = { pluginFilter = id }, label = { Text(label) })
+                    LiquidChoice(pluginFilter == id, { pluginFilter = id }, { Text(label) })
                 }
             }
         }
@@ -353,9 +404,6 @@ private fun itemText(item: JSONObject): String = listOf("description", "desc", "
                         if (failed.isNotBlank()) {
                             Text("失败原因", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                             Text(failed, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                        }
-                        item.optString("desc").ifBlank { item.optString("description") }.takeIf { it.isNotBlank() }?.let {
-                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         TextButton(onClick={pluginConfig=item.getString("name")}){Text("插件配置")}
                         StudioStatus("作者", item.optString("author", "未知")); StudioStatus("版本", item.optString("version", "未知"))
@@ -497,8 +545,12 @@ internal fun readMessageText(value: Any?): String = when (value) {
     }, confirmButton = { TextButton(onClick = {
         val first = fields.first().first
         if (values[first].isNullOrBlank()) { error = "请填写${fields.first().second}"; return@TextButton }
-        if (page == StudioPage.PLUGINS && !values["url"].orEmpty().matches(Regex("https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/?"))) {
-            error = "请填写完整的 GitHub HTTPS 仓库地址"; return@TextButton
+        if (page == StudioPage.PLUGINS) {
+            val repoUrl = values["url"].orEmpty().trim().removeSuffix(".git")
+            if (!repoUrl.matches(Regex("https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/?"))) {
+                error = "请填写完整的 GitHub HTTPS 仓库地址"; return@TextButton
+            }
+            values["url"] = repoUrl
         }
         if (page == StudioPage.KNOWLEDGE && values["embedding_provider_id"].isNullOrBlank()) {
             error = "请先选择或填写云端嵌入模型 ID"; return@TextButton

@@ -32,6 +32,9 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.astrbot.android.core.*
 import io.astrbot.android.runtime.*
@@ -80,16 +83,17 @@ import java.util.zip.ZipInputStream
                 StudioInsetDivider()
                 StudioStatus("作者", "mzbgq")
                 StudioStatus("版本", BuildConfig.VERSION_NAME)
+                StudioStatus("版本代码", BuildConfig.VERSION_CODE.toString())
             }
             StudioAppUpdateCard()
             if (BuildConfig.APPLICATION_ID.endsWith(".qqfix")) StudioCard("与旧版并存") {
                 Text("这是独立安装的修复版，数据与旧版分别保存。启动本版服务前，请先在旧版停止服务，避免端口占用。")
-                StudioTile("迁移已有设置", "先在旧版导出备份，再到本版的备份与恢复中导入", { vm.go(StudioPage.BACKUP) })
+                StudioTile("迁移已有设置", "先在旧版导出备份，再到本版的备份与恢复中导入", { vm.go(StudioPage.BACKUP) }, iconRes = R.drawable.ic_backup)
             }
             StudioCard("关于这个应用") {
                 Text("独立设计的安卓操作界面。运行环境内置于完整安装包，机器人和 QQ 连接在本机运行，模型使用你配置的云端 API。")
                 Text("此私用版本使用 SnowLuma 2.4.2 连接 QQ，运行层还包含 PRoot、AstrBot 等组件。各组件的原作者与许可声明均保留。", style = MaterialTheme.typography.bodySmall)
-                StudioTile("开源许可与原作者", "查看随包分发的完整声明", { vm.go(StudioPage.LICENSES) })
+                StudioTile("开源许可与原作者", "查看随包分发的完整声明", { vm.go(StudioPage.LICENSES) }, iconRes = R.drawable.ic_document)
             }
             StudioArtwork(vm)
         }
@@ -134,7 +138,7 @@ import java.util.zip.ZipInputStream
     }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         if (uri != null) vm.run("导出运行日志") { withContext(Dispatchers.IO) {
-            context.contentResolver.openOutputStream(uri, "w")!!.bufferedWriter().use { RuntimeStore.log(context, category).exportTo(it) }
+            requireNotNull(context.contentResolver.openOutputStream(uri, "wt")) { "无法写入目标文件" }.bufferedWriter().use { RuntimeStore.log(context, category).exportTo(it) }
         }; vm.notice = "日志已保存" }
     }
     val diagnostics = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
@@ -161,7 +165,7 @@ import java.util.zip.ZipInputStream
             LiquidOutlinedButton(onClick = { paused = !paused }, Modifier.weight(1f)) { Text(if (paused) "继续刷新" else "暂停刷新") }
             LiquidOutlinedButton(onClick = { export.launch("WhaleTalk-${category.name.lowercase()}.log") }, Modifier.weight(1f)) { Text("导出日志") }
         }
-        StudioField(query, { query = it.take(120) }, "搜索日志", hint = "输入关键词，仅筛选最近 200 行")
+        StudioField(query, { query = it.take(120) }, "搜索日志", hint = "输入关键词，仅筛选最近 200 行", clearable = true)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             LiquidChoice(issuesOnly, { issuesOnly = !issuesOnly }, { Text("只看警告与错误") })
             TextButton(onClick = { query = ""; issuesOnly = false }, enabled = query.isNotEmpty() || issuesOnly) { Text("清除筛选") }
@@ -259,11 +263,21 @@ import java.util.zip.ZipInputStream
 
 @Composable private fun StudioBackground(vm: StudioModel) {
     val context = LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     var recovery by remember { mutableStateOf(BackgroundRecovery.enabled(context)) }
+    var exempt by remember { mutableStateOf(context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)) }
+    DisposableEffect(lifecycle, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                exempt = context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     fun open(intent: Intent) { runCatching { context.startActivity(intent) }.onFailure { vm.error = "系统没有提供此设置入口，请在应用信息中手动设置" } }
     val colorOs = listOf(android.os.Build.MANUFACTURER, android.os.Build.BRAND).any { it.contains("oneplus", true) || it.contains("oppo", true) || it.contains("realme", true) }
     StudioCard("让陪伴持续") {
-        val exempt = context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
         StudioStatus("电池优化", if (exempt) "已豁免" else "尚未豁免", exempt)
         LiquidOutlinedButton(onClick = { open(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))) }, Modifier.fillMaxWidth()) { Text("申请电池优化豁免") }
         LiquidOutlinedButton(onClick = { open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }, Modifier.fillMaxWidth()) { Text("应用信息与后台权限") }
@@ -367,7 +381,7 @@ import java.util.zip.ZipInputStream
     var content by remember { mutableStateOf<Pair<String, String>?>(null) }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) vm.run("保存开源声明") { withContext(Dispatchers.IO) {
-            context.contentResolver.openOutputStream(uri, "w")!!.use { output -> context.assets.open("third-party/notices.zip").use { it.copyTo(output) } }
+            requireNotNull(context.contentResolver.openOutputStream(uri, "wt")) { "无法写入目标文件" }.use { output -> context.assets.open("third-party/notices.zip").use { it.copyTo(output) } }
         }; vm.notice = "开源声明已保存" }
     }
     LaunchedEffect(Unit) { runCatching { withContext(Dispatchers.IO) {
@@ -375,7 +389,7 @@ import java.util.zip.ZipInputStream
         List(list.length()) { list.getString(it) }
     } }.onSuccess { names = it }.onFailure { vm.error = "此构建未包含完整许可材料，请使用完整发布包" } }
     StudioCard("开源贡献者", "mzbgq 维护本应用界面；底层组件与社区作品保留各自作者和许可。") {
-        StudioField(query, { query = it }, "搜索项目与许可")
+        StudioField(query, { query = it }, "搜索项目与许可", clearable = true)
         LiquidOutlinedButton(onClick = { export.launch("WhaleTalk-open-source-notices.zip") }, Modifier.fillMaxWidth()) { Text("导出全部许可") }
     }
     val filtered = names.filter { query.isBlank() || it.contains(query, true) }
@@ -407,11 +421,24 @@ import java.util.zip.ZipInputStream
         TerminalStore.resize(72, 24)
         while (isActive) {
             val output = TerminalStore.output(generation, sequence)
-            if (output.optBoolean("reset")) bytes.reset()
-            generation = output.optLong("generation"); sequence = output.optLong("sequence")
-            bytes.write(Base64.decode(output.optString("data"), Base64.DEFAULT))
-            if (bytes.size() > 65536) { val tail = bytes.toByteArray().takeLast(32768).toByteArray(); bytes.reset(); bytes.write(tail) }
-            text = bytes.toString("UTF-8").replace(Regex("\\u001B\\[[0-?]*[ -/]*[@-~]"), "").replace(Regex("\\u001B\\][^\\u0007]*\\u0007"), "").replace("\r", "")
+            val rendered = withContext(Dispatchers.Default) {
+                if (output.optBoolean("reset")) bytes.reset()
+                generation = output.optLong("generation"); sequence = output.optLong("sequence")
+                val chunk = output.optString("data")
+                if (chunk.isNotEmpty()) bytes.write(Base64.decode(chunk, Base64.DEFAULT))
+                if (bytes.size() > 65536) {
+                    val raw = bytes.toByteArray()
+                    var start = (raw.size - 32768).coerceAtLeast(0)
+                    while (start < raw.size && (raw[start].toInt() and 0xC0) == 0x80) start++
+                    bytes.reset()
+                    bytes.write(raw, start, raw.size - start)
+                }
+                bytes.toString("UTF-8")
+                    .replace(Regex("\\u001B\\[[0-?]*[ -/]*[@-~]"), "")
+                    .replace(Regex("\\u001B\\][^\\u0007]*\\u0007"), "")
+                    .replace("\r", "")
+            }
+            text = rendered
             delay(500)
         }
     }
@@ -426,7 +453,18 @@ import java.util.zip.ZipInputStream
     }
     StudioCard { SelectionContainer { Text(text.ifBlank { "创建终端后，输出会显示在这里。" }, Modifier.heightIn(min = 180.dp, max = 400.dp).verticalScroll(rememberScrollState()), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) } }
     StudioCard {
-        StudioField(input, { input = it }, "输入命令", enabled = terminal.running)
+        StudioField(
+            input,
+            { input = it },
+            "输入命令",
+            enabled = terminal.running,
+            onDone = {
+                if (terminal.running && input.isNotEmpty()) {
+                    TerminalStore.input(input + "\r")
+                    input = ""
+                }
+            },
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             LiquidButton(onClick = { TerminalStore.input(input + "\r"); input = "" }, enabled = terminal.running) { Text("执行") }
             LiquidOutlinedButton(onClick = { TerminalStore.input("\u0003") }, enabled = terminal.running) { Text("Ctrl+C") }
@@ -483,6 +521,20 @@ import java.util.zip.ZipInputStream
         val candidate = update?.candidate
         if (candidate != null) {
             Text("发现 ${candidate.versionName}" + (candidate.apkBytes?.let { "，安装包约 ${it / 1024 / 1024} MiB" } ?: ""), style = MaterialTheme.typography.bodySmall)
+            val previewNotes = candidate.notes.trim()
+            if (previewNotes.isNotBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                ) {
+                    Text(
+                        previewNotes.take(400) + if (previewNotes.length > 400) "…" else "",
+                        Modifier.fillMaxWidth().padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             LiquidOutlinedButton(onClick = { uriHandler.openUri(candidate.pageUrl) }, Modifier.fillMaxWidth()) { Text("打开下载页") }
         }
     }

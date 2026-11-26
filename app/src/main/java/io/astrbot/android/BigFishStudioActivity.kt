@@ -47,9 +47,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.astrbot.android.core.*
 import io.astrbot.android.runtime.*
@@ -173,7 +177,12 @@ open class BigFishStudioActivity : ComponentActivity() {
                                         state.busy || vm.busy -> StudioBadgeTone.BUSY
                                         else -> StudioBadgeTone.NEUTRAL
                                     }
-                                    Box(Modifier.padding(end = 12.dp)) {
+                                    Box(
+                                        Modifier
+                                            .padding(end = 12.dp)
+                                            .clip(CircleShape)
+                                            .clickable(role = Role.Button) { vm.go(StudioPage.SERVICES) },
+                                    ) {
                                         StudioBadge(pillText, pillTone)
                                     }
                                 }
@@ -206,15 +215,18 @@ open class BigFishStudioActivity : ComponentActivity() {
                 ) {
                     (vm.error ?: state.error)?.let { text ->
                         Surface(
-                            modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 12.dp),
                             shape = RoundedCornerShape(18.dp),
                             color = MaterialTheme.colorScheme.errorContainer,
                             border = BorderStroke(0.75.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.25f)),
                         ) {
-                            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(text, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
-                                TextButton(onClick = { vm.go(StudioPage.LOGS) }) { Text("日志") }
-                                TextButton(onClick = { diagnostics.launch("WhaleTalk-diagnostics.zip") }) { Text("导出诊断包") }
+                            Column(Modifier.padding(start = 14.dp, end = 8.dp, top = 12.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                    TextButton(onClick = { vm.go(StudioPage.LOGS) }) { Text("日志") }
+                                    TextButton(onClick = { diagnostics.launch("WhaleTalk-diagnostics.zip") }) { Text("导出诊断包") }
+                                    if (vm.error != null) TextButton(onClick = { vm.error = null }) { Text("关闭") }
+                                }
                             }
                         }
                     }
@@ -224,12 +236,18 @@ open class BigFishStudioActivity : ComponentActivity() {
                             shape = RoundedCornerShape(14.dp),
                             color = MaterialTheme.colorScheme.primaryContainer,
                         ) {
-                            Text(
-                                it,
-                                Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
+                            Row(
+                                Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    it,
+                                    Modifier.weight(1f).padding(vertical = 6.dp),
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                TextButton(onClick = { vm.notice = null }) { Text("关闭") }
+                            }
                         }
                     }
                     if (vm.page == StudioPage.CHAT) StudioChat(vm, dockInset)
@@ -421,11 +439,14 @@ open class BigFishStudioActivity : ComponentActivity() {
         }
     }
     StudioCard("配置云端模型") {
-        StudioTile("主人和模型", "填写主人 QQ、服务商与 API Key", { vm.go(StudioPage.MODEL) }, if (vm.configured) "已配置" else null)
-        if (vm.configured) StudioTile("本机管理账号", "填入初始密码或恢复 AstrBot 管理登录", { vm.go(StudioPage.ACCOUNT) })
+        StudioTile("主人和模型", "填写主人 QQ、服务商与 API Key", { vm.go(StudioPage.MODEL) }, if (vm.configured) "已配置" else null, iconRes = R.drawable.ic_ai)
+        if (vm.configured) {
+            StudioInsetDivider(46.dp)
+            StudioTile("本机管理账号", "填入初始密码或恢复 AstrBot 管理登录", { vm.go(StudioPage.ACCOUNT) }, iconRes = R.drawable.ic_info)
+        }
     }
     StudioCard("登录机器人 QQ") {
-        StudioTile("登录 QQ", "登录画面直接显示在应用中", { vm.go(StudioPage.QQ) })
+        StudioTile("登录 QQ", "登录画面直接显示在应用中", { vm.go(StudioPage.QQ) }, iconRes = R.drawable.ic_bot)
     }
     LiquidOutlinedButton(onClick = { vm.go(StudioPage.HOME, true) }, Modifier.fillMaxWidth()) { Text("返回运行页") }
 }
@@ -593,7 +614,8 @@ open class BigFishStudioActivity : ComponentActivity() {
     StudioCard("连接状态") {
         StudioStatus("QQ 在线", if (service.qq == QqState.ONLINE) "已确认" else "待确认", service.qq == QqState.ONLINE)
         StudioStatus("消息通道", if (service.oneBot == OneBotState.CONNECTED) "已连通" else "等待连接", service.oneBot == OneBotState.CONNECTED)
-        StudioTile("运行服务", "启动机器人引擎、重连和停止服务", { vm.go(StudioPage.SERVICES) })
+        StudioInsetDivider()
+        StudioTile("运行服务", "启动机器人引擎、重连和停止服务", { vm.go(StudioPage.SERVICES) }, iconRes = R.drawable.ic_settings)
     }
     StudioCard("状态查询") {
         StudioSwitch("启用 SnowLuma 状态指令", "默认指令 #sl，直接返回版本和运行时间，不调用模型。修改开关会重新启动正在运行的 QQ 服务。", statusCommand, !state.busy && !vm.busy) { value ->
@@ -659,7 +681,7 @@ private fun studioPageIcon(page: StudioPage): Int = when (page) {
 
 @Composable private fun StudioTools(vm: StudioModel) {
     var query by rememberSaveable { mutableStateOf("") }
-    StudioField(query, { query = it }, "搜索工具")
+    StudioField(query, { query = it }, "搜索工具", clearable = true)
     listOf(
         "模型与回复" to listOf(StudioPage.MODEL, StudioPage.ACCESS, StudioPage.PROVIDERS, StudioPage.HISTORY, StudioPage.SESSIONS, StudioPage.STATS),
         "人设与插件" to listOf(StudioPage.PERSONAS, StudioPage.PERSONA_LIBRARY, StudioPage.COMPANIONS, StudioPage.PLUGINS, StudioPage.CAPABILITIES, StudioPage.KNOWLEDGE, StudioPage.SCHEDULE),
@@ -717,8 +739,9 @@ private fun studioPageIcon(page: StudioPage): Int = when (page) {
     }
     StudioRuntimeDashboard(state, snow, bot)
     StudioCard {
-        StudioTile("查看日志", "启动失败、掉线与配置问题", { vm.go(StudioPage.LOGS) })
-        StudioTile("初次设置", "准备环境和连接模型", { vm.go(StudioPage.SETUP) })
+        StudioTile("查看日志", "启动失败、掉线与配置问题", { vm.go(StudioPage.LOGS) }, iconRes = R.drawable.ic_logs)
+        StudioInsetDivider(46.dp)
+        StudioTile("初次设置", "准备环境和连接模型", { vm.go(StudioPage.SETUP) }, iconRes = R.drawable.ic_settings)
         LiquidOutlinedButton(onClick = { command("reconcile", null) }, Modifier.fillMaxWidth(), enabled = !state.busy) { Text("恢复中断的任务") }
     }
 }
@@ -769,14 +792,17 @@ private fun channelLabel(state: ManagerState, qq: ServiceStatus): String = when 
     val update by AppUpdateStore.state.collectAsStateWithLifecycle()
     val candidate = update?.candidate ?: return
     val uriHandler = LocalUriHandler.current
-    StudioCard("发现新版本 ${candidate.versionName}", "可到 GitHub Releases 下载安装包。覆盖安装即可从 1.4.0 升级，不会自动下载或安装。") {
+    val sizeHint = candidate.apkBytes?.let { "安装包约 ${it / 1024 / 1024} MiB。" }.orEmpty()
+    StudioCard("发现新版本 ${candidate.versionName}", "${sizeHint}同签名版本可直接覆盖升级，不会自动下载或安装。") {
         LiquidButton(onClick = { uriHandler.openUri(candidate.pageUrl) }, Modifier.fillMaxWidth()) { Text("打开下载页") }
     }
 }
 
 @Composable private fun StudioRuntimeDashboard(state: ManagerState, qq: ServiceStatus, bot: ServiceStatus) {
     val context = LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     var resources by remember { mutableStateOf(ResourceSnapshot()) }
+    var nowElapsed by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     LaunchedEffect(Unit) {
         val monitor = ResourceMonitor(context)
         while (isActive) {
@@ -784,14 +810,31 @@ private fun channelLabel(state: ManagerState, qq: ServiceStatus): String = when 
             delay(2600)
         }
     }
+    LaunchedEffect(state.runtimeStartedAtElapsed) {
+        if (state.runtimeStartedAtElapsed != null) {
+            while (isActive) {
+                nowElapsed = SystemClock.elapsedRealtime()
+                delay(1000)
+            }
+        }
+    }
     val reconnect by AutoReconnectStore.state.collectAsStateWithLifecycle()
-    val exempt = remember { context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName) }
+    var exempt by remember { mutableStateOf(context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)) }
+    DisposableEffect(lifecycle, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                exempt = context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     val colorOs = listOf(Build.MANUFACTURER, Build.BRAND, Build.FINGERPRINT).any { it.contains("oneplus", true) || it.contains("oppo", true) || it.contains("realme", true) }
     StudioCard("资源用量") {
         val memoryBytes = (resources.memory.totalKiB ?: resources.memory.partialKiB)?.times(1024)
         StudioStatus("CPU", resources.cpuPercent?.let { String.format(java.util.Locale.CHINA, "约 %.1f%%", it) } ?: "测量中", resources.cpuPercent != null)
         StudioStatus("内存", memoryBytes?.let { Formatter.formatShortFileSize(context, it) } ?: "测量中", memoryBytes != null)
-        val uptime = state.runtimeStartedAtElapsed?.let { SystemClock.elapsedRealtime() - it }?.takeIf { it >= 0 }
+        val uptime = state.runtimeStartedAtElapsed?.let { nowElapsed - it }?.takeIf { it >= 0 }
         StudioStatus("运行时长", uptime?.let { formatUptime(it) } ?: "未运行", uptime != null)
         StudioStatus("Ubuntu 环境", if (state.componentsReady) "已就绪" else if (state.environmentInstalled) "基础已安装" else "未准备", state.componentsReady)
         val retryDelay = reconnect.delayMillis
