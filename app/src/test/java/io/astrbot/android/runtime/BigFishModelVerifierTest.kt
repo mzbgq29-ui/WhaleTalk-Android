@@ -88,7 +88,7 @@ class BigFishModelVerifierTest {
             SSLException(raw) to "安全连接验证失败，请检查系统时间或接口证书",
             IOException(raw) to "未连上模型服务，请检查网络、接口地址后重试",
         )) {
-            val client = OkHttpClient.Builder().addInterceptor { throw error }.build()
+            val client = OkHttpClient.Builder().addInterceptor(okhttp3.Interceptor { throw error }).build()
             val failure = runCatching { BigFishModelVerifier(client).verify(input) }.exceptionOrNull()
             assertEquals(expected, failure?.message)
             assertFalse(failure.toString().contains(input.key))
