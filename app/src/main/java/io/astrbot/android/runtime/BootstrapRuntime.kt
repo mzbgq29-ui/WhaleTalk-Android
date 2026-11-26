@@ -1,27 +1,22 @@
 package io.astrbot.android.runtime
 
-import io.astrbot.android.checkLocalized
-import io.astrbot.android.requireLocalized
-import io.astrbot.android.LocalizedStateException
-
-import io.astrbot.android.AppText
-import io.astrbot.android.R
-
 import android.content.Context
 import android.os.Build
 import android.system.Os
+import io.astrbot.android.AppText
+import io.astrbot.android.LocalizedStateException
+import io.astrbot.android.R
+import io.astrbot.android.checkLocalized
 import io.astrbot.android.core.ArchivePaths
+import io.astrbot.android.core.SecretRedactor
+import io.astrbot.android.requireLocalized
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
-import java.util.concurrent.TimeUnit
-import java.util.zip.GZIPInputStream
-
-data class CommandResult(val exitCode: Int, val output: String)
+import java.time.Instant
 
 /** The launch executables are installed from APK jniLibs, never chmod'd from writable assets. */
 class BootstrapRuntime(private val context: Context) {
@@ -82,7 +77,7 @@ class BootstrapRuntime(private val context: Context) {
                 // Keep checksum details in exported runtime logs, with a short recovery hint in the UI.
                 runCatching {
                     RuntimeStore.log(context, LogCategory.RUNTIME).append(
-                        "${java.time.Instant.now()} Ubuntu asset integrity mismatch: " +
+                        "${Instant.now()} Ubuntu asset integrity mismatch: " +
                             "asset=$assetBase/ubuntu.tar.bin abi=$abi bytesRead=$bytesRead " +
                             "expectedSha256=$expected actualSha256=$actual"
                     )
@@ -105,10 +100,30 @@ class BootstrapRuntime(private val context: Context) {
                 File(staging, "etc/resolv.conf").writeText("nameserver 1.1.1.1\nnameserver 8.8.8.8\n")
                 progress(AppText.get(R.string.ui_verifying_extracted_runtime))
                 val verification = if (manifest.optString("kind") == "complete") {
-                    "test -f /var/lib/bigfish/runtime-components.json && test -f /opt/astrbot/main.py && " +
-                        "/opt/astrbot-venv/bin/python -c 'import quart, fastapi, faiss; print(\"runtime-ok\")'"
+                    """
+                    set -e
+                    echo 'Checking runtime-components.json'
+                    test -f /var/lib/bigfish/runtime-components.json
+                    echo 'Checking AstrBot main.py'
+                    test -f /opt/astrbot/main.py
+                    exec /usr/bin/env OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
+                        /opt/astrbot-venv/bin/python -I -B -u -c '
+                    print("Loading Quart")
+                    import quart
+                    print("Loading FastAPI")
+                    import fastapi
+                    print("Loading FAISS")
+                    import faiss
+                    print("runtime-ok")
+                    '
+                    """.trimIndent()
                 } else "test -f /etc/os-release && /bin/echo bootstrap-ok"
-                val check = runCommand(processBuilderAt(staging, "/bin/sh", "-lc", verification), 180)
+                val check = runCommand(processBuilderAt(staging, "/bin/sh", "-c", verification), 180) { output ->
+                    runCatching {
+                        val detail = SecretRedactor.redact(output).trim().ifEmpty { "No output from verification command" }
+                        RuntimeStore.log(context, LogCategory.RUNTIME).append("${Instant.now()} Ubuntu verification timed out: $detail")
+                    }
+                }
                 requireLocalized(check.exitCode == 0) { AppText.get(R.string.ui_runtime_verification_failed, check.output.takeLast(3000)) }
                 DurableFiles.write(File(staging, ".astrbot-bootstrap.json"), manifest)
             } catch (failure: Throwable) {
@@ -228,41 +243,11 @@ class BootstrapRuntime(private val context: Context) {
     suspend fun execute(vararg command: String, timeoutSeconds: Long = 30): CommandResult =
         runCommand(processBuilder(*command), timeoutSeconds)
 
-    private suspend fun runCommand(builder: ProcessBuilder, timeoutSeconds: Long): CommandResult = withContext(Dispatchers.IO) {
-        val process = builder.start()
-        coroutineScope {
-                val output = async(Dispatchers.IO) {
-                    process.inputStream.bufferedReader().use { reader ->
-                        buildString {
-                            val buffer = CharArray(4096)
-                            while (true) {
-                                val n = reader.read(buffer)
-                                if (n < 0) break
-                                if (length < 1_048_576) append(buffer, 0, n.coerceAtMost(1_048_576 - length))
-                            }
-                        }
-                    }
-                }
-                try {
-                    if (!kotlinx.coroutines.runInterruptible(Dispatchers.IO) { process.waitFor(timeoutSeconds, TimeUnit.SECONDS) }) {
-                        stopOwnedProcess(process)
-                        throw LocalizedStateException(AppText.get(R.string.ui_command_timed_out))
-                    }
-                    CommandResult(process.exitValue(), output.await())
-                } finally {
-                    if (process.isAlive) stopOwnedProcess(process)
-                }
+    private suspend fun runCommand(builder: ProcessBuilder, timeoutSeconds: Long, onTimeout: (String) -> Unit = {}): CommandResult =
+        runRuntimeCommand(timeoutSeconds, builder::start) { output ->
+            onTimeout(output)
+            LocalizedStateException(AppText.get(R.string.ui_command_timed_out))
         }
-    }
-
-    private fun stopOwnedProcess(process: Process) {
-        process.destroy()
-        if (!process.waitFor(8, TimeUnit.SECONDS)) {
-            process.destroyForcibly()
-            process.waitFor(3, TimeUnit.SECONDS)
-        }
-        process.inputStream.close()
-    }
 
     companion object { private val installationLock = Mutex() }
 }
