@@ -9,9 +9,10 @@
     "interrupted package transaction requires recovery",
     "valid bundled compatibility library installs without invoking GCC",
     "corrupt library rejected and previous installation preserved",
-    "binary binds to exact current compatibility sources"
+    "binary binds to exact current compatibility sources",
+    "dpkg status reader resolves installed packages and Multi-Arch without spawning dpkg-query"
   ],
   "result": "passed",
-  "count": 10,
+  "count": 11,
   "scope": "No apt/dpkg installation, network, QQ account or model API; dependency checks use pure-Python Debian version comparison."
 }

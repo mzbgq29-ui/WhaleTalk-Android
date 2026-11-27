@@ -111,6 +111,7 @@ class DiagnosticsRepository(private val context: Context) {
         val storageSpace = StorageSpace.read(context)
         val system = JSONObject().put("manufacturer", safe(Build.MANUFACTURER, 128)).put("model", safe(Build.MODEL, 128))
             .put("androidVersion", safe(Build.VERSION.RELEASE, 64)).put("api", Build.VERSION.SDK_INT)
+            .put("kernel", safe(BootstrapRuntime.currentKernelVersion(), 128))
             .put("supportedAbis", JSONArray(Build.SUPPORTED_ABIS.toList()))
             .put("availableStorageBytes", storageSpace.availableBytes ?: JSONObject.NULL)
             .put("storagePressure", storageSpace.pressure.name)
@@ -128,6 +129,7 @@ class DiagnosticsRepository(private val context: Context) {
         val manager = JSONObject().put("environmentInstalled", snapshot.environmentInstalled).put("componentsReady", snapshot.componentsReady)
             .put("maintenance", snapshot.maintenance.name).put("phase", safe(snapshot.phase))
             .put("versionNotice", inspection?.notice ?: JSONObject.NULL)
+            .put("prootNoSeccomp", BootstrapRuntime.isSeccompDisabledForCurrentKernel(context))
             .put("lastError", snapshot.error?.let { safe(it) } ?: JSONObject.NULL)
         val network = NetworkConnectivity.snapshot(context).let {
             JSONObject().put("state", it.state.name).put("checkedAt", it.checkedAtMillis ?: JSONObject.NULL)

@@ -862,6 +862,7 @@
     <string name="ui_extracting_ubuntu_runtime" formatted="false">"正在解包 Ubuntu 环境"</string>
     <string name="ui_verifying_extracted_runtime" formatted="false">"验证解包后的运行环境"</string>
     <string name="ui_runtime_verification_failed">"环境验证失败：%1$s"</string>
+    <string name="ui_runtime_proot_child_process_failed">"当前设备内核（%1$s）在 PRoot 追踪子进程时发生卡死（即使关闭 seccomp 仍超时）。这通常是部分第三方 ROM/4.14 内核的 ptrace 冻结兼容性问题，无法通过重试或清理空间解决，请更新或更换修复了 ptrace 冻结补丁的系统内核/ROM。"</string>
     <string name="ui_extracting_ubuntu_entries">"正在解包 Ubuntu：%1$s 个文件项"</string>
     <string name="ui_invalid_resource_file_size" formatted="false">"资源文件大小异常"</string>
     <string name="ui_invalid_extracted_resource_size" formatted="false">"资源解包大小异常"</string>

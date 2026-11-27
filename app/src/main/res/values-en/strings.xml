@@ -860,6 +860,7 @@
     <string name="ui_extracting_ubuntu_runtime" formatted="false">"Extracting Ubuntu runtime"</string>
     <string name="ui_verifying_extracted_runtime" formatted="false">"Verifying extracted runtime"</string>
     <string name="ui_runtime_verification_failed">"Runtime verification failed: %1$s"</string>
+    <string name="ui_runtime_proot_child_process_failed">"This device kernel (%1$s) hangs when PRoot traces child processes (even with PROOT_NO_SECCOMP=1). This is typically a kernel/ROM ptrace freezer bug (e.g. Linux 4.14 missing the ptrace_stop fix) and cannot be resolved by retrying or freeing storage; please update or switch to a kernel/ROM with ptrace fixed."</string>
     <string name="ui_extracting_ubuntu_entries">"Extracting Ubuntu: %1$s entries"</string>
     <string name="ui_invalid_resource_file_size" formatted="false">"Invalid resource file size"</string>
     <string name="ui_invalid_extracted_resource_size" formatted="false">"Invalid extracted resource size"</string>

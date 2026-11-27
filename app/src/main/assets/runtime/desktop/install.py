@@ -12,6 +12,7 @@ ROOT = Path('/manager/extensions/desktop')
 MARKER = Path('/var/lib/astrbot-manager/desktop.json')
 PENDING = MARKER.with_suffix('.pending')
 PACKAGES_MARKER = MARKER.with_name('desktop-packages.json')
+DPKG_STATUS = Path('/var/lib/dpkg/status')
 SOURCES = json.loads((ROOT / 'sources.json').read_text())
 TOOLS = ['Xvfb', 'xauth', 'fluxbox', 'feh', 'x11vnc', 'websockify', 'tmux', 'xdpyinfo', 'dbus-run-session', 'gcc', 'g++', 'make', 'python3', 'curl']
 COMPATIBILITY_FILES = ['guest_compat.c', 'proc_locks.py', 'guest-compat']
@@ -30,8 +31,33 @@ def desktop_state(phase, current=0, total=0, package=''):
     print('ASTRBOT_DESKTOP ' + json.dumps(dict(phase=phase, current=current, total=total, package=package)), flush=True)
 
 
+def read_dpkg_status(status_path=None):
+    path = status_path if status_path is not None else globals().get('DPKG_STATUS', Path('/var/lib/dpkg/status'))
+    result = {}
+    for stanza in Path(path).read_text(encoding='utf-8', errors='replace').split('\n\n'):
+        if not stanza.strip():
+            continue
+        fields = {}
+        for line in stanza.splitlines():
+            if not line or line[0] in (' ', '\t'):
+                continue
+            key, separator, value = line.partition(':')
+            if separator:
+                fields[key.strip()] = value.strip()
+        if fields.get('Status') == 'install ok installed':
+            pkg = fields.get('Package', '')
+            arch = fields.get('Architecture', '')
+            version = fields.get('Version', '')
+            if pkg and arch and version:
+                result[pkg, arch] = {'version': version, 'multi_arch': fields.get('Multi-Arch', '')}
+    return result
+
+
 def installed_packages():
-    # One database read replaces a dpkg-query process for every bundled package.
+    status_path = globals().get('DPKG_STATUS', Path('/var/lib/dpkg/status'))
+    if Path(status_path).is_file():
+        return {key: info['version'] for key, info in read_dpkg_status(status_path).items()}
+    # Fallback when dpkg status file is absent.
     output = subprocess.check_output(['dpkg-query', '-W',
         '-f=${Package}\t${Architecture}\t${db:Status-Status}\t${Version}\n'], text=True)
     result = {}
@@ -40,6 +66,26 @@ def installed_packages():
         if len(fields) == 4 and fields[2] == 'installed':
             result[fields[0], fields[1]] = fields[3]
     return result
+
+
+def installed_package_lines(names, status_path=None):
+    path = status_path if status_path is not None else globals().get('DPKG_STATUS', Path('/var/lib/dpkg/status'))
+    if Path(path).is_file():
+        installed = read_dpkg_status(path)
+        lines = []
+        for name in names:
+            matched = None
+            for (pkg, arch), info in installed.items():
+                if pkg == name or f'{pkg}:{arch}' == name:
+                    matched = (pkg, arch, info)
+                    break
+            if matched is None:
+                raise RuntimeError(f'Missing installed package: {name}')
+            pkg, arch, info = matched
+            label = f'{pkg}:{arch}' if info.get('multi_arch') == 'same' else pkg
+            lines.append(f"{label}\t{info['version']}")
+        return lines
+    return subprocess.check_output(['dpkg-query', '-W', '-f=${binary:Package}\t${Version}\n', *names], text=True).splitlines()
 
 
 def desktop_tools_ready():
@@ -272,8 +318,8 @@ def main():
         assert Path('/usr/share/novnc/vnc.html').is_file()
         desktop_state('COMPATIBILITY')
         install_compatibility()
-        packages = subprocess.check_output(['dpkg-query', '-W', '-f=${binary:Package}\t${Version}\n', *SOURCES['packages']], text=True)
-        atomic_json(MARKER, {'schemaVersion': 1, 'packages': packages.splitlines(), 'compatibilitySHA256': compatibility_digest()})
+        packages = installed_package_lines(SOURCES['packages'])
+        atomic_json(MARKER, {'schemaVersion': 1, 'packages': packages, 'compatibilitySHA256': compatibility_digest()})
     elif mode in ('dependencies', 'preinstall'):
         assert subprocess.check_output(['dpkg', '--print-architecture'], text=True).strip() == SOURCES['architecture']
         release = dict(line.split('=', 1) for line in Path('/etc/os-release').read_text().splitlines() if '=' in line)
@@ -307,8 +353,8 @@ def main():
         if mode != 'preinstall':
             desktop_state('COMPATIBILITY')
             install_compatibility()
-            packages = subprocess.check_output(['dpkg-query', '-W', '-f=${binary:Package}\t${Version}\n', *SOURCES['packages']], text=True)
-            atomic_json(MARKER, {'schemaVersion': 1, 'packages': packages.splitlines(), 'compatibilitySHA256': compatibility_digest()})
+            packages = installed_package_lines(SOURCES['packages'])
+            atomic_json(MARKER, {'schemaVersion': 1, 'packages': packages, 'compatibilitySHA256': compatibility_digest()})
         PENDING.unlink()
         run('apt-get', 'clean')
     elif mode == 'qq':

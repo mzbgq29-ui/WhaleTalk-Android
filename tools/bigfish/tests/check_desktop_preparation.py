@@ -10,6 +10,7 @@ module={};exec(compile(ast.fix_missing_locations(ast.Module(body=selected,type_i
 checks=[]
 compare_versions = module['compare_debian_versions']
 package_at_least = module['package_at_least']
+orig_installed_packages = module['installed_packages']
 with patch.object(subprocess, 'run', side_effect=AssertionError('Version comparison spawned a subprocess')):
     for older, newer in (
         ('99.0', '1:0.1'), ('9:99.0', '10:0.1'),
@@ -60,5 +61,30 @@ with tempfile.TemporaryDirectory() as tmp:
     spec=json.loads((root/'compat-binary.json').read_text());h=hashlib.sha256()
     for name in module['COMPATIBILITY_FILES']:h.update((root/name).read_bytes())
     assert h.hexdigest()==spec['sourceSHA256'];checks.append('binary binds to exact current compatibility sources')
+    status_file=root/'dpkg-status'
+    status_file.write_text(
+        'Package: xvfb\nStatus: install ok installed\nArchitecture: arm64\nVersion: 2:21.1.12-1ubuntu1.1\n'
+        'Description: Virtual Framebuffer fake X server\n continued line: ignored\n\n'
+        'Package: libfoo\nStatus: install ok installed\nArchitecture: arm64\nMulti-Arch: same\nVersion: 1.2.3-4\n\n'
+        'Package: removed-pkg\nStatus: deinstall ok config-files\nArchitecture: arm64\nVersion: 0.9\n\n'
+        'Package: unpacked-pkg\nStatus: install ok unpacked\nArchitecture: arm64\nVersion: 0.8\n',
+        encoding='utf-8',
+    )
+    saved_installed=module['installed_packages']
+    try:
+        module['installed_packages']=orig_installed_packages
+        module['DPKG_STATUS']=status_file
+        with patch.object(subprocess, 'check_output', side_effect=AssertionError('dpkg-query spawned a subprocess')):
+            parsed=module['read_dpkg_status'](status_file)
+            assert parsed=={
+                ('xvfb','arm64'):{'version':'2:21.1.12-1ubuntu1.1','multi_arch':''},
+                ('libfoo','arm64'):{'version':'1.2.3-4','multi_arch':'same'},
+            }, parsed
+            assert module['installed_packages']()=={('xvfb','arm64'):'2:21.1.12-1ubuntu1.1',('libfoo','arm64'):'1.2.3-4'}
+            assert module['installed_package_lines'](['xvfb','libfoo'])==['xvfb\t2:21.1.12-1ubuntu1.1','libfoo:arm64\t1.2.3-4']
+    finally:
+        module['installed_packages']=saved_installed
+        module.pop('DPKG_STATUS',None)
+    checks.append('dpkg status reader resolves installed packages and Multi-Arch without spawning dpkg-query')
 report={'checks':checks,'result':'passed','count':len(checks),'scope':'No apt/dpkg installation, network, QQ account or model API; dependency checks use pure-Python Debian version comparison.'}
 (project/'validation/desktop-preparation-1.3.6.json').write_text(json.dumps(report,indent=2));print(json.dumps(report,indent=2))

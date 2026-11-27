@@ -35,6 +35,10 @@ class BootstrapRuntime(private val context: Context) {
                 val installed = requireNotNull(DurableFiles.read(marker)) { "运行记录不完整，原数据已保留" }
                 // An APK replacement does not authorize replacing a user's working guest.
                 requireLocalized(installed.getString("abi") == abi) { AppText.get(R.string.ui_the_installed_runtime_architecture_differs_from_this_apk_files) }
+                val prefs = context.getSharedPreferences("manager", Context.MODE_PRIVATE)
+                if (prefs.getString(PREF_PROOT_CHILD_VERIFIED_KERNEL, null) != currentKernelVersion()) {
+                    verifyChildProcessAt(rootfs, complete = installed.optString("kind") == "complete")
+                }
                 progress(AppText.get(R.string.ui_ubuntu_runtime_is_ready))
                 return@withLock
             }
@@ -111,6 +115,7 @@ class BootstrapRuntime(private val context: Context) {
         // Run the probes directly so shell startup and its child processes cannot block verification.
         if (!complete) {
             verifyCommand(staging, "PRoot startup and /etc/os-release", 20, "/usr/bin/test", "-f", "/etc/os-release")
+            verifyChildProcessAt(staging, complete = false)
             return
         }
         verifyCommand(staging, "PRoot startup", 20, "/bin/true")
@@ -132,13 +137,71 @@ class BootstrapRuntime(private val context: Context) {
                 import faiss
                 print("runtime-ok")
             """.trimIndent())
+        verifyChildProcessAt(staging, complete = true)
+    }
+
+    private suspend fun verifyChildProcessAt(guestRoot: File, complete: Boolean) {
+        val kernel = currentKernelVersion()
+        val prefs = context.getSharedPreferences("manager", Context.MODE_PRIVATE)
+        val initialDisableSeccomp = isSeccompDisabledForCurrentKernel(context)
+        val python = if (complete) "/opt/astrbot-venv/bin/python" else "/usr/bin/python3"
+        val script = """
+            import subprocess
+            out = subprocess.check_output(['/bin/echo', 'child-ok'])
+            assert out.strip() == b'child-ok', f'unexpected output: {out!r}'
+            print('child-ok')
+        """.trimIndent()
+        val result = probeProotChildProcess(initialDisableSeccomp) { disableSeccomp ->
+            var timedOutOutput: String? = null
+            try {
+                runCommand(
+                    processBuilderAt(guestRoot, disableSeccomp, "/usr/bin/env", python, "-I", "-B", "-u", "-c", script),
+                    15,
+                ) { output ->
+                    timedOutOutput = output
+                    runCatching {
+                        val detail = SecretRedactor.redact(output).trim().ifEmpty { "No output from child-process probe" }
+                        RuntimeStore.log(context, LogCategory.RUNTIME).append(
+                            "${Instant.now()} PRoot child-process probe (kernel $kernel, prootNoSeccomp=$disableSeccomp) timed out after 15s: $detail"
+                        )
+                    }
+                }
+            } catch (failure: LocalizedStateException) {
+                val detail = SecretRedactor.redact(timedOutOutput ?: failure.message.orEmpty()).trim().ifEmpty {
+                    "Timed out after 15s"
+                }
+                CommandResult(-1, detail)
+            }
+        }
+        when (result) {
+            is ProotChildProbeResult.Passed -> {
+                val editor = prefs.edit().putString(PREF_PROOT_CHILD_VERIFIED_KERNEL, kernel)
+                if (result.disableSeccomp) editor.putString(PREF_PROOT_NO_SECCOMP_KERNEL, kernel)
+                check(editor.commit()) { "无法保存运行环境探测结果，请检查存储空间" }
+                runCatching {
+                    RuntimeStore.log(context, LogCategory.RUNTIME).append(
+                        "${Instant.now()} PRoot child-process probe passed (kernel $kernel, prootNoSeccomp=${result.disableSeccomp})"
+                    )
+                }
+            }
+            is ProotChildProbeResult.Failed -> {
+                runCatching {
+                    RuntimeStore.log(context, LogCategory.RUNTIME).append(
+                        "${Instant.now()} PRoot child-process probe failed (device=${Build.MANUFACTURER} ${Build.MODEL}, " +
+                            "android=${Build.VERSION.RELEASE}/API${Build.VERSION.SDK_INT}, kernel=$kernel, " +
+                            "retriedWithoutSeccomp=${result.retriedWithoutSeccomp}): ${SecretRedactor.redact(result.detail)}"
+                    )
+                }
+                throw LocalizedStateException(AppText.get(R.string.ui_runtime_proot_child_process_failed, kernel))
+            }
+        }
     }
 
     private suspend fun verifyCommand(staging: File, phase: String, timeoutSeconds: Long, vararg command: String) {
         val check = runCommand(processBuilderAt(staging, *command), timeoutSeconds) { output ->
             runCatching {
                 val detail = SecretRedactor.redact(output).trim().ifEmpty { "No output from verification command" }
-                val kernel = System.getProperty("os.version", "unknown")
+                val kernel = currentKernelVersion()
                 RuntimeStore.log(context, LogCategory.RUNTIME).append(
                     "${Instant.now()} Ubuntu verification ($phase, kernel $kernel) timed out after ${timeoutSeconds}s: $detail"
                 )
@@ -214,7 +277,10 @@ class BootstrapRuntime(private val context: Context) {
         command(listOf(existing.first(), File(nativeDir, "libterminal-runner.so").path, columns.toString(), rows.toString()) + existing.drop(1))
     }
 
-    private fun processBuilderAt(guestRoot: File, vararg command: String): ProcessBuilder {
+    private fun processBuilderAt(guestRoot: File, vararg command: String): ProcessBuilder =
+        processBuilderAt(guestRoot, isSeccompDisabledForCurrentKernel(context), *command)
+
+    private fun processBuilderAt(guestRoot: File, disableSeccomp: Boolean, vararg command: String): ProcessBuilder {
         val tmp = File(context.cacheDir, "proot-tmp").apply { mkdirs() }
         // Android has no /dev/shm; Electron needs a private writable shared-memory directory.
         val sharedMemory = File(context.cacheDir, "guest-shm").apply { mkdirs() }
@@ -254,6 +320,7 @@ class BootstrapRuntime(private val context: Context) {
                 put("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
                 put("LANG", "C.UTF-8")
                 put("TERM", "xterm-256color")
+                if (disableSeccomp) put("PROOT_NO_SECCOMP", "1")
             }
         }
     }
@@ -267,5 +334,39 @@ class BootstrapRuntime(private val context: Context) {
             LocalizedStateException(AppText.get(R.string.ui_command_timed_out))
         }
 
-    companion object { private val installationLock = Mutex() }
+    companion object {
+        private val installationLock = Mutex()
+        private const val PREF_PROOT_NO_SECCOMP_KERNEL = "proot_no_seccomp_kernel"
+        private const val PREF_PROOT_CHILD_VERIFIED_KERNEL = "proot_child_verified_kernel"
+
+        internal fun currentKernelVersion(): String =
+            System.getProperty("os.version")?.trim().orEmpty().ifEmpty { "unknown" }
+
+        internal fun isSeccompDisabledForCurrentKernel(context: Context): Boolean =
+            context.getSharedPreferences("manager", Context.MODE_PRIVATE)
+                .getString(PREF_PROOT_NO_SECCOMP_KERNEL, null) == currentKernelVersion()
+    }
+}
+
+internal sealed class ProotChildProbeResult {
+    data class Passed(val disableSeccomp: Boolean) : ProotChildProbeResult()
+    data class Failed(val detail: String, val retriedWithoutSeccomp: Boolean) : ProotChildProbeResult()
+}
+
+internal suspend fun probeProotChildProcess(
+    initialDisableSeccomp: Boolean,
+    runProbe: suspend (disableSeccomp: Boolean) -> CommandResult,
+): ProotChildProbeResult {
+    val first = runProbe(initialDisableSeccomp)
+    if (first.exitCode == 0) return ProotChildProbeResult.Passed(initialDisableSeccomp)
+    if (!initialDisableSeccomp) {
+        val retry = runProbe(true)
+        if (retry.exitCode == 0) return ProotChildProbeResult.Passed(disableSeccomp = true)
+        val detail = retry.output.ifBlank { first.output }.trim().ifEmpty {
+            "PRoot child process exited with code ${retry.exitCode} (initial ${first.exitCode})"
+        }
+        return ProotChildProbeResult.Failed(detail, retriedWithoutSeccomp = true)
+    }
+    val detail = first.output.trim().ifEmpty { "PRoot child process exited with code ${first.exitCode}" }
+    return ProotChildProbeResult.Failed(detail, retriedWithoutSeccomp = false)
 }

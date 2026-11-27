@@ -12,6 +12,7 @@ import okhttp3.OkHttpClient
 import org.json.JSONObject
 import java.io.File
 import java.security.SecureRandom
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
@@ -117,11 +118,25 @@ class DesktopRepository(private val context: Context) {
             DurableFiles.delete(File(directory, "bundled-packages"))
             report(AppText.get(R.string.qq_desktop_access))
             prepareAccess()
-            val commands = runtime.execute("/bin/bash", "-lc",
-                "ln -sfn '$GUEST/desktop.sh' /usr/local/bin/desktop-start; ln -sfn '$GUEST/qq.sh' /usr/local/bin/qq-desktop; ln -sfn '$GUEST/guest-compat' /usr/local/bin/guest-compat")
-            checkLocalized(commands.exitCode == 0) { AppText.get(R.string.desktop_install_failed) }
+            installGuestCommandLinks()
         } finally { heartbeat.cancelAndJoin() }
     } }
+
+    private fun installGuestCommandLinks() {
+        val binDir = File(runtime.rootfs, "usr/local/bin").apply { mkdirs() }
+        for ((name, script) in listOf("desktop-start" to "desktop.sh", "qq-desktop" to "qq.sh", "guest-compat" to "guest-compat")) {
+            val target = File(binDir, name)
+            val staged = File(binDir, "$name.new")
+            staged.delete()
+            Os.symlink("$GUEST/$script", staged.path)
+            try {
+                Os.rename(staged.path, target.path)
+            } catch (failure: Throwable) {
+                staged.delete()
+                throw failure
+            }
+        }
+    }
 
     private suspend fun prepareBundledPackages(progress: (String) -> Unit) {
         val base = "desktop-packages/$abiName"
@@ -232,13 +247,17 @@ class DesktopRepository(private val context: Context) {
         val unpacked = mutableSetOf<String>()
         val configured = mutableSetOf<String>()
         val packageLine = Regex("^(Unpacking|Setting up|Processing triggers for) ([A-Za-z0-9.+:~-]+)(?: |$)")
+        val lastPhase = AtomicReference("start")
+        val recentOutput = StringBuffer()
         val output = launch(Dispatchers.IO) {
             runCatching { process.inputStream.bufferedReader().useLines { lines -> lines.forEach {
                 if (it.startsWith("ASTRBOT_TRANSFER ")) runCatching {
                     DesktopInstallStore.guestProgress(JSONObject(it.removePrefix("ASTRBOT_TRANSFER ")))
                 } else if (it.startsWith("ASTRBOT_DESKTOP ")) runCatching {
                     val item = JSONObject(it.removePrefix("ASTRBOT_DESKTOP "))
-                    val label = when (item.getString("phase")) {
+                    val phaseName = item.getString("phase")
+                    lastPhase.set(phaseName)
+                    val label = when (phaseName) {
                         "VERIFYING" -> AppText.get(R.string.qq_desktop_verify, item.getInt("current"), item.getInt("total"), item.getString("package"))
                         "UNPACKING" -> {
                             packageTotal = item.getInt("total")
@@ -253,7 +272,13 @@ class DesktopRepository(private val context: Context) {
                     }
                     label?.let { labelText -> progress?.invoke(labelText) }
                 } else {
-                    RuntimeStore.log(context, LogCategory.DESKTOP).append(SecretRedactor.redact(it))
+                    val redacted = SecretRedactor.redact(it)
+                    synchronized(recentOutput) {
+                        if (recentOutput.isNotEmpty()) recentOutput.append('\n')
+                        recentOutput.append(redacted)
+                        if (recentOutput.length > 3000) recentOutput.delete(0, recentOutput.length - 3000)
+                    }
+                    RuntimeStore.log(context, LogCategory.DESKTOP).append(redacted)
                     if (mode == "dependencies") packageLine.find(it)?.let { match ->
                         val name = match.groupValues[2]
                         val label = when (match.groupValues[1]) {
@@ -279,11 +304,28 @@ class DesktopRepository(private val context: Context) {
                 val now = android.os.SystemClock.elapsedRealtime()
                 if (DesktopInstallStore.state.value.stage != DesktopInstallStage.PAUSED) remaining -= now - previous
                 previous = now
-                checkLocalized(remaining > 0) { AppText.get(R.string.desktop_install_failed) }
+                if (remaining <= 0) {
+                    val detail = synchronized(recentOutput) { recentOutput.toString() }.trim().ifEmpty { "No output from desktop installer" }
+                    val message = "${Instant.now()} Desktop installer (mode=$mode, phase=${lastPhase.get()}, " +
+                        "kernel=${BootstrapRuntime.currentKernelVersion()}, " +
+                        "prootNoSeccomp=${BootstrapRuntime.isSeccompDisabledForCurrentKernel(context)}) " +
+                        "timed out after ${seconds}s: $detail"
+                    runCatching { RuntimeStore.log(context, LogCategory.DESKTOP).append(message) }
+                    runCatching { RuntimeStore.log(context, LogCategory.RUNTIME).append(message) }
+                    throw io.astrbot.android.LocalizedStateException(AppText.get(R.string.desktop_install_failed))
+                }
             }
             output.join()
-            if (process.exitValue() == 130) throw DesktopInstallStopped()
-            process.exitValue()
+            val exitCode = process.exitValue()
+            if (exitCode == 130) throw DesktopInstallStopped()
+            if (exitCode !in listOf(0, 75)) {
+                runCatching {
+                    RuntimeStore.log(context, LogCategory.DESKTOP).append(
+                        "${Instant.now()} Desktop installer (mode=$mode, phase=${lastPhase.get()}) exited with code $exitCode"
+                    )
+                }
+            }
+            exitCode
         } finally {
             withContext(NonCancellable + Dispatchers.IO) {
                 if (process.isAlive) {
