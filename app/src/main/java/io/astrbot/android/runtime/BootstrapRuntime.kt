@@ -99,37 +99,55 @@ class BootstrapRuntime(private val context: Context) {
                 Os.chmod(File(staging, "var/tmp").path, 1023)
                 File(staging, "etc/resolv.conf").writeText("nameserver 1.1.1.1\nnameserver 8.8.8.8\n")
                 progress(AppText.get(R.string.ui_verifying_extracted_runtime))
-                val verification = if (manifest.optString("kind") == "complete") {
-                    """
-                    set -e
-                    echo 'Checking runtime-components.json'
-                    test -f /var/lib/bigfish/runtime-components.json
-                    echo 'Checking AstrBot main.py'
-                    test -f /opt/astrbot/main.py
-                    exec /usr/bin/env OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
-                        /opt/astrbot-venv/bin/python -I -B -u -c '
-                    print("Loading Quart")
-                    import quart
-                    print("Loading FastAPI")
-                    import fastapi
-                    print("Loading FAISS")
-                    import faiss
-                    print("runtime-ok")
-                    '
-                    """.trimIndent()
-                } else "test -f /etc/os-release && /bin/echo bootstrap-ok"
-                val check = runCommand(processBuilderAt(staging, "/bin/sh", "-c", verification), 180) { output ->
-                    runCatching {
-                        val detail = SecretRedactor.redact(output).trim().ifEmpty { "No output from verification command" }
-                        RuntimeStore.log(context, LogCategory.RUNTIME).append("${Instant.now()} Ubuntu verification timed out: $detail")
-                    }
-                }
-                requireLocalized(check.exitCode == 0) { AppText.get(R.string.ui_runtime_verification_failed, check.output.takeLast(3000)) }
+                verifyAt(staging, complete = manifest.optString("kind") == "complete")
                 DurableFiles.write(File(staging, ".astrbot-bootstrap.json"), manifest)
             } catch (failure: Throwable) {
                 DurableFiles.delete(staging, writableGuestDirectories = true)
                 throw failure
             }
+    }
+
+    private suspend fun verifyAt(staging: File, complete: Boolean) {
+        // Run the probes directly so shell startup and its child processes cannot block verification.
+        if (!complete) {
+            verifyCommand(staging, "PRoot startup and /etc/os-release", 20, "/usr/bin/test", "-f", "/etc/os-release")
+            return
+        }
+        verifyCommand(staging, "PRoot startup", 20, "/bin/true")
+        verifyCommand(staging, "Python dependencies", 180,
+            "/usr/bin/env", "OPENBLAS_NUM_THREADS=1", "OMP_NUM_THREADS=1",
+            "/opt/astrbot-venv/bin/python", "-I", "-B", "-u", "-c", """
+                from pathlib import Path
+
+                for path in ("/var/lib/bigfish/runtime-components.json", "/opt/astrbot/main.py"):
+                    print(f"Checking {path}")
+                    if not Path(path).is_file():
+                        raise SystemExit(f"Missing runtime file: {path}")
+
+                print("Loading Quart")
+                import quart
+                print("Loading FastAPI")
+                import fastapi
+                print("Loading FAISS")
+                import faiss
+                print("runtime-ok")
+            """.trimIndent())
+    }
+
+    private suspend fun verifyCommand(staging: File, phase: String, timeoutSeconds: Long, vararg command: String) {
+        val check = runCommand(processBuilderAt(staging, *command), timeoutSeconds) { output ->
+            runCatching {
+                val detail = SecretRedactor.redact(output).trim().ifEmpty { "No output from verification command" }
+                val kernel = System.getProperty("os.version", "unknown")
+                RuntimeStore.log(context, LogCategory.RUNTIME).append(
+                    "${Instant.now()} Ubuntu verification ($phase, kernel $kernel) timed out after ${timeoutSeconds}s: $detail"
+                )
+            }
+        }
+        requireLocalized(check.exitCode == 0) {
+            val detail = check.output.takeLast(3000).trim().ifEmpty { "$phase exited with code ${check.exitCode}" }
+            AppText.get(R.string.ui_runtime_verification_failed, detail)
+        }
     }
 
     private suspend fun prepareDesktopSnapshot(staging: File, base: JSONObject, progress: (String) -> Unit) {
