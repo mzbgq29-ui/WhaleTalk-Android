@@ -1,5 +1,13 @@
 # 更新记录
 
+## v1.8.4（鲸语 WhaleTalk）
+
+管理器版本 `1.8.4`，版本代码 `100804`，包名为 `dev.whaletalk.android`。同签名的 1.8.0、1.8.2 和 1.8.3 可直接覆盖升级。
+
+- 解包验证阶段新增 PRoot 子进程探测（`verifyChildProcessAt`）：若首次追踪子进程超时，自动切换并按当前内核版本持久化 `PROOT_NO_SECCOMP=1` 重试；若禁用 seccomp 后仍超时，明确提示设备内核/ROM ptrace 冻结兼容问题而非误导用户重试或清理空间。
+- 优化桌面环境安装流程：宿主侧通过 `Os.symlink` + `Os.rename` 直接建立命令软链接，且 `install.py` 直接读取 `/var/lib/dpkg/status` 解析已安装包与 `Multi-Arch` 信息，减少 PRoot 内多余子进程派生，并补充超时阶段、退出码与 seccomp 状态日志。
+- 诊断信息新增当前内核版本（`kernel`）与 `prootNoSeccomp` 状态字段，便于定位运行环境异常。
+
 ## v1.8.3（鲸语 WhaleTalk）
 
 管理器版本 `1.8.3`，版本代码 `100803`，包名为 `dev.whaletalk.android`。同签名的 1.8.0 和 1.8.2 可直接覆盖升级。
